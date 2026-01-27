@@ -140,29 +140,63 @@ class AIService:
             return result
         except Exception as e:
             print(f"AI Service Error: {e}")
+            if isinstance(e, requests.exceptions.ConnectionError):
+                print("Connection Error: Is Ollama running at localhost:11434?")
             return ""
 
     def analyze_intent(self, query: str, kpi_config: Dict, ui_mappings: Dict) -> Dict[str, Any]:
+        # 1. Pre-check for direct KPI matches (Exact or Keyword based)
+        kpi_definitions = kpi_config.get('kpi_definitions', {})
+        matched_kpi = None
+        
+        # Check if query matches a KPI key or is contained in the description
+        for k, v in kpi_definitions.items():
+            desc = v.get('description', '').lower()
+            # If query is exactly a key or contained in description/keywords
+            if query.lower() == k.lower() or query.lower() in desc:
+                matched_kpi = k
+                print(f"Direct match found for KPI: {k}")
+                break
+        
         # Construct a prompt to analyze the user's query
-        kpi_info = {k: v.get('description', '') for k, v in kpi_config.get('kpi_definitions', {}).items()}
+        kpi_info = {k: v.get('description', '') for k, v in kpi_definitions.items()}
         
         prompt = f"""
-        Analyze user query: "{query}"
+        [Role]
+        你是一个专业的数据分析助手，负责从用户查询中提取关键参数。
+        
+        [User Query]
+        "{query}"
         
         [Context]
-        Available KPIs (key: description): {json.dumps(kpi_info, ensure_ascii=False)}
-        Available Time types: {[t['value'] for t in ui_mappings.get('time_options', {}).get('types', [])]}
-        Available Scopes categories: {[s['value'] for s in ui_mappings.get('scope_options', {}).get('categories', [])]}
+        1. Available KPIs (key: description): {json.dumps(kpi_info, ensure_ascii=False)}
+        2. Available Time types: {[t['value'] for t in ui_mappings.get('time_options', {}).get('types', [])]}
+        3. Available Scopes categories: {[s['value'] for s in ui_mappings.get('scope_options', {}).get('categories', [])]}
         
-        [Task]
-        Identify the KPI, time range, and scope from the query.
-        - If the query mentions "FE", "Field Engineer", "FE人数", it's likely "fe_count".
-        - If the query mentions a department like "CT", "3DI", "SPS", it's a "product" scope.
-        - Scopes MUST be formatted as "category:value" (e.g., "product:CT", "organization:SPS").
+        [Instruction]
+        从查询中识别 KPI、时间范围 (time_range) 和维度范围 (scope)。
+        
+        [Rules]
+        1. KPI 识别优先级：
+           - 如果用户提到 "FE", "Field Engineer", "FE人数", "FE数量", 匹配 "fe_count"。
+           - 如果用户提到 "OS", "Outsourced", "外协", 匹配 "os_count"。
+           - 如果用户提到 "机台", "机器", "Machine", 匹配 "machine_count"。
+           - 如果用户提到 "Chamber", "小室", 匹配 "chamber_count"。
+           - 默认的人数统计匹配 "headcount"。
+        2. Scope 识别：
+           - 部门（如 "CT", "3DI", "SPS", "ES"）属于 "product" 维度。
+           - 范围格式必须为 "category:value" (例如 "product:CT", "organization:SPS")。
+        3. 如果已经识别出 KPI 为 "{matched_kpi if matched_kpi else 'None'}"，请优先确认。
         
         [Output Format]
-        Return JSON ONLY: {{"kpi": "key", "time_range": "val", "scope": ["category:value"], "missing_params": []}}
-        If a parameter is not found, set to null and add to "missing_params".
+        Return JSON ONLY:
+        {{
+            "kpi": "kpi_key",
+            "time_range": "time_value_or_null",
+            "scope": ["category:value", ...],
+            "missing_params": ["kpi", "time_range", "scope"]
+        }}
+        如果没有找到对应参数，将其设为 null 并加入 missing_params 列表。
         """
         print(f"Analyzing intent for: {query}")
         response_text = self.generate_response(prompt)
@@ -239,9 +273,25 @@ class AIService:
         conditions = conditions.split('\n')[0] if '\n' in conditions else conditions
         
         # Remove surrounding quotes if AI added them
-        conditions = conditions.strip().strip('"').strip("'")
+        conditions = conditions.strip()
+        if (conditions.startswith('"') and conditions.endswith('"')) or \
+           (conditions.startswith("'") and conditions.endswith("'")):
+            conditions = conditions[1:-1].strip()
         
-        return conditions or "1=1"
+        if not conditions:
+            return ""
+            
+        # If it's a GROUP BY, return as is
+        if conditions.upper().startswith("GROUP BY"):
+            return conditions
+            
+        # Ensure it doesn't start with AND for now, we'll let the template/caller handle it
+        # but wait, the caller in main.py expects to just replace.
+        # Let's make it return " AND conditions" if it's a condition.
+        if not conditions.upper().startswith("AND "):
+            return f" AND {conditions}"
+            
+        return f" {conditions}"
 
     def generate_sql(self, kpi: str, time_range: str, scope: List[str], kpi_config: Dict) -> str:
         # Get SQL template for the KPI
@@ -317,14 +367,32 @@ class AIService:
            (conditions.startswith("'") and conditions.endswith("'")):
             conditions = conditions[1:-1].strip()
         
+        # --- Fix for trailing AND issue ---
+        if conditions:
+            # If it starts with GROUP BY, don't add AND
+            if conditions.upper().strip().startswith("GROUP BY"):
+                final_sql = template.replace("{conditions}", conditions)
+            else:
+                # Add AND if not already there (AI might add it)
+                if not conditions.upper().strip().startswith("AND "):
+                    final_sql = template.replace("{conditions}", f" AND {conditions}")
+                else:
+                    final_sql = template.replace("{conditions}", f" {conditions}")
+        else:
+            final_sql = template.replace("{conditions}", "")
+        
         # Check if we need to adjust the SELECT clause for GROUP BY
-        final_sql = template.replace("{conditions}", conditions)
+        # (Already handled above by final_sql assignment if conditions exists)
         
         if "GROUP BY" in conditions.upper():
-            group_col = conditions.upper().split("GROUP BY")[1].strip()
-            # If the template starts with SELECT COUNT, insert the group column
-            if "SELECT COUNT" in final_sql.upper():
-                final_sql = final_sql.replace("SELECT ", f"SELECT {group_col}, ")
+            # Use regex or find to get the part after GROUP BY with original casing
+            import re
+            match = re.search(r'GROUP\s+BY\s+(.*)', conditions, re.IGNORECASE)
+            if match:
+                group_col = match.group(1).strip()
+                # If the template starts with SELECT COUNT, insert the group column
+                if "SELECT COUNT" in final_sql.upper():
+                    final_sql = final_sql.replace("SELECT ", f"SELECT {group_col}, ", 1)
         
         print(f"Final SQL: {final_sql}")
         return final_sql

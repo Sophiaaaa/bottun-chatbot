@@ -1,117 +1,117 @@
 tables:
   - name: "dws_tas_roster"
-    description: "Employee roster table (employees and outsourced). Contains historical versions identified by st_WrMonth."
+    description: "员工花名册（包含正式员工和外协）。包含 st_WrMonth 标识的历史版本。Employee roster table (employees and outsourced)."
     columns:
       - name: "st_EmpID"
         type: "VARCHAR(6)"
-        description: "Employee ID, 6 digits. Primary Key (with st_WrMonth)."
+        description: "员工工号，6位数字。Employee ID, 6 digits. Primary Key."
       - name: "st_EmpNameCN"
         type: "VARCHAR(100)"
-        description: "Employee Chinese Name."
+        description: "员工中文姓名。Employee Chinese Name."
       - name: "st_EmpNameEN"
         type: "VARCHAR(100)"
-        description: "Employee English Name."
+        description: "员工英文姓名。Employee English Name."
       - name: "st_WorkLocation"
         type: "VARCHAR(100)"
-        description: "Work Location."
+        description: "工作地点。Work Location."
       - name: "dt_HireDate"
         type: "DATETIME"
-        description: "Hire Date."
+        description: "入职日期。Hire Date."
       - name: "d_YearsOfService"
         type: "FLOAT"
-        description: "Years of Service (e.g. 1.23)."
+        description: "服务年限。Years of Service (e.g. 1.23)."
       - name: "st_EmpApproverName"
         type: "VARCHAR(100)"
-        description: "Level 1 Approver Name."
+        description: "一级审批人姓名。Level 1 Approver Name."
       - name: "st_FinalApproverName"
         type: "VARCHAR(100)"
-        description: "Level 2 (Final) Approver Name. If NULL, L1 is final."
+        description: "二级审批人（终审人）姓名。Level 2 (Final) Approver Name."
       - name: "st_EmpAvailable"
         type: "VARCHAR(1)"
-        description: "Status: '1'=Active, '0'=Resigned."
+        description: "状态：'1'=在职, '0'=离职。Status: '1'=Active, '0'=Resigned."
       - name: "st_DeptName"
         type: "VARCHAR(100)"
-        description: "Department/Product Name (e.g., 3DI, CT, SPS, ES...)."
+        description: "部门/产品组名称。Department/Product Name (e.g., 3DI, CT, SPS, ES...)."
       - name: "st_LEOName"
         type: "VARCHAR(100)"
-        description: "Employment Type: L/E=Regular, O*=Outsourced, T=Temp."
+        description: "用工类型：L/E=正式, O*=外协, T=实习/临时。Employment Type."
       - name: "st_EMPBand"
         type: "VARCHAR(1)"
-        description: "Employee Band (Regular only): M=Manager, V=VP, B=Business, E=Engineer, O=Operation, S=Sales."
+        description: "职级带宽（仅限正式员工）。Employee Band (Regular only)."
       - name: "st_OrgName"
         type: "VARCHAR(100)"
-        description: "Organization Name."
+        description: "组织架构名称。Organization Name."
       - name: "st_OrgPICID"
         type: "VARCHAR(6)"
-        description: "Organization PIC (Person In Charge) ID."
+        description: "组织负责人ID。Organization PIC (Person In Charge) ID."
       - name: "st_OrgPICName"
         type: "VARCHAR(100)"
-        description: "Organization PIC Name."
+        description: "组织负责人姓名。Organization PIC Name."
       - name: "st_WrMonth"
         type: "VARCHAR(6)"
-        description: "Data Version (YYYYMM). Always filter by this for point-in-time queries."
+        description: "数据版本/月份 (YYYYMM)。Data Version (YYYYMM)."
       - name: "st_ClassName"
         type: "VARCHAR(8)"
-        description: "Job Class: FE=Field Engineer, Sales, Member, Manager, Temp, Assistant."
+        description: "岗位类别：FE=现场工程师, Sales=销售, Member=成员, Manager=经理, Temp=临时, Assistant=助理。Job Class."
 
   - name: "dws_wisdom_machine"
-    description: "Machine information table. Contains historical versions identified by st_WrMonth."
+    description: "机台信息表。包含 st_WrMonth 标识的历史版本。Machine information table."
     columns:
       - name: "st_SN"
         type: "VARCHAR(255)"
-        description: "Machine Serial Number. Primary Key (with st_WrMonth)."
+        description: "机台序列号。Machine Serial Number. Primary Key."
       - name: "st_MachineWarrantyStatus"
         type: "VARCHAR(255)"
-        description: "Warranty Status."
+        description: "保修状态。Warranty Status."
       - name: "st_MachineSWLHModel"
         type: "VARCHAR(255)"
-        description: "Machine Model."
+        description: "机台型号。Machine Model."
       - name: "st_MachineClusterFlag"
         type: "VARCHAR(255)"
-        description: "Type: 'R'=Main Machine, 'C'=Chamber."
+        description: "类别：'R'=主机, 'C'=小室/Chamber。Type: 'R'=Main Machine, 'C'=Chamber."
       - name: "st_ProductLine"
         type: "VARCHAR(255)"
-        description: "Product Line (e.g., 3DI, CT, SPS...)."
+        description: "产品线。Product Line (e.g., 3DI, CT, SPS...)."
       - name: "st_BP"
         type: "VARCHAR(255)"
-        description: "Customer Name (Short)."
+        description: "客户简称。Customer Name (Short)."
       - name: "st_Fab"
         type: "VARCHAR(255)"
-        description: "Customer Fab Name."
+        description: "客户厂房名称。Customer Fab Name."
       - name: "st_BU"
         type: "VARCHAR(255)"
-        description: "Business Unit."
+        description: "业务单元。Business Unit."
       - name: "st_City"
         type: "VARCHAR(255)"
-        description: "City."
+        description: "城市。City."
       - name: "st_Site"
         type: "VARCHAR(255)"
-        description: "Site (e.g., Hefei Site)."
+        description: "站点。Site (e.g., Hefei Site)."
       - name: "st_MachineModelName"
         type: "VARCHAR(255)"
-        description: "Machine Model Name."
+        description: "机台型号名称。Machine Model Name."
       - name: "dt_MachineFactoryShippingDate"
         type: "DATETIME"
-        description: "Factory Shipping Date."
+        description: "出厂日期。Factory Shipping Date."
       - name: "dt_MachineMoveInDate"
         type: "DATETIME"
-        description: "Move-in Date."
+        description: "搬入日期。Move-in Date."
       - name: "dt_MachineStartUpHardwareEndDate"
         type: "DATETIME"
-        description: "Hardware Install End Date."
+        description: "硬件安装完成日期。Hardware Install End Date."
       - name: "dt_MachineWarrantyStartDate"
         type: "DATETIME"
-        description: "Warranty Start Date."
+        description: "保修开始日期。Warranty Start Date."
       - name: "dt_MachineWarrantyExpiryDate"
         type: "DATETIME"
-        description: "Warranty Expiry Date."
+        description: "保修截止日期。Warranty Expiry Date."
       - name: "st_WrMonth"
         type: "VARCHAR(6)"
-        description: "Data Version (YYYYMM)."
+        description: "数据版本/月份 (YYYYMM)。Data Version (YYYYMM)."
 
 kpi_definitions:
   headcount:
-    description: "Total number of active employees (st_EmpAvailable='1')."
+    description: "在职人数统计。Total number of active employees (st_EmpAvailable='1')."
     table_name: "dws_tas_roster"
     time_column: "st_WrMonth"
     scope_columns:
@@ -122,7 +122,7 @@ kpi_definitions:
       SELECT COUNT(DISTINCT st_EmpID) 
       FROM dws_tas_roster 
       WHERE st_EmpAvailable = '1' 
-        AND {conditions}
+      {conditions}
   
   fe_count:
     description: "FE人数统计, Field Engineer (FE) count. Keywords: FE, Field Engineer, FE人数, FE数量."
@@ -137,7 +137,7 @@ kpi_definitions:
       FROM dws_tas_roster 
       WHERE st_EmpAvailable = '1' 
         AND st_LEOName = 'E'
-        AND {conditions}
+      {conditions}
 
   os_count:
     description: "OS人数统计, Outsourced Staff (OS) count. Keywords: OS, Outsourced, 外协人数, 外协数量."
@@ -152,7 +152,7 @@ kpi_definitions:
       FROM dws_tas_roster 
       WHERE st_EmpAvailable = '1' 
         AND st_LEOName LIKE 'O%'
-        AND {conditions}
+      {conditions}
 
   machine_count:
     description: "机台数量统计, Total number of machines (st_MachineClusterFlag='R')."
@@ -167,10 +167,10 @@ kpi_definitions:
       SELECT COUNT(DISTINCT st_SN) 
       FROM dws_wisdom_machine 
       WHERE st_MachineClusterFlag = 'R'
-        AND {conditions}
+      {conditions}
 
   chamber_count:
-    description: "Total number of chambers (st_MachineClusterFlag='C')."
+    description: "Chamber (小室) 数量统计。Total number of chambers (st_MachineClusterFlag='C')."
     table_name: "dws_wisdom_machine"
     time_column: "st_WrMonth"
     scope_columns:
@@ -182,7 +182,7 @@ kpi_definitions:
       SELECT COUNT(DISTINCT st_SN) 
       FROM dws_wisdom_machine 
       WHERE st_MachineClusterFlag = 'C'
-        AND {conditions}
+      {conditions}
 
 example_sqls:
   - question: "How many active employees are there?"
