@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+mysql-connector-python
+pyyaml
+requests
+pandas
+openpyxl
+matplotlib
+seaborn

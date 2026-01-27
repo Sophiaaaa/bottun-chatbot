@@ -1,0 +1,204 @@
+tables:
+  - name: "dws_tas_roster"
+    description: "Employee roster table (employees and outsourced). Contains historical versions identified by st_WrMonth."
+    columns:
+      - name: "st_EmpID"
+        type: "VARCHAR(6)"
+        description: "Employee ID, 6 digits. Primary Key (with st_WrMonth)."
+      - name: "st_EmpNameCN"
+        type: "VARCHAR(100)"
+        description: "Employee Chinese Name."
+      - name: "st_EmpNameEN"
+        type: "VARCHAR(100)"
+        description: "Employee English Name."
+      - name: "st_WorkLocation"
+        type: "VARCHAR(100)"
+        description: "Work Location."
+      - name: "dt_HireDate"
+        type: "DATETIME"
+        description: "Hire Date."
+      - name: "d_YearsOfService"
+        type: "FLOAT"
+        description: "Years of Service (e.g. 1.23)."
+      - name: "st_EmpApproverName"
+        type: "VARCHAR(100)"
+        description: "Level 1 Approver Name."
+      - name: "st_FinalApproverName"
+        type: "VARCHAR(100)"
+        description: "Level 2 (Final) Approver Name. If NULL, L1 is final."
+      - name: "st_EmpAvailable"
+        type: "VARCHAR(1)"
+        description: "Status: '1'=Active, '0'=Resigned."
+      - name: "st_DeptName"
+        type: "VARCHAR(100)"
+        description: "Department/Product Name (e.g., 3DI, CT, SPS, ES...)."
+      - name: "st_LEOName"
+        type: "VARCHAR(100)"
+        description: "Employment Type: L/E=Regular, O*=Outsourced, T=Temp."
+      - name: "st_EMPBand"
+        type: "VARCHAR(1)"
+        description: "Employee Band (Regular only): M=Manager, V=VP, B=Business, E=Engineer, O=Operation, S=Sales."
+      - name: "st_OrgName"
+        type: "VARCHAR(100)"
+        description: "Organization Name."
+      - name: "st_OrgPICID"
+        type: "VARCHAR(6)"
+        description: "Organization PIC (Person In Charge) ID."
+      - name: "st_OrgPICName"
+        type: "VARCHAR(100)"
+        description: "Organization PIC Name."
+      - name: "st_WrMonth"
+        type: "VARCHAR(6)"
+        description: "Data Version (YYYYMM). Always filter by this for point-in-time queries."
+      - name: "st_ClassName"
+        type: "VARCHAR(8)"
+        description: "Job Class: FE=Field Engineer, Sales, Member, Manager, Temp, Assistant."
+
+  - name: "dws_wisdom_machine"
+    description: "Machine information table. Contains historical versions identified by st_WrMonth."
+    columns:
+      - name: "st_SN"
+        type: "VARCHAR(255)"
+        description: "Machine Serial Number. Primary Key (with st_WrMonth)."
+      - name: "st_MachineWarrantyStatus"
+        type: "VARCHAR(255)"
+        description: "Warranty Status."
+      - name: "st_MachineSWLHModel"
+        type: "VARCHAR(255)"
+        description: "Machine Model."
+      - name: "st_MachineClusterFlag"
+        type: "VARCHAR(255)"
+        description: "Type: 'R'=Main Machine, 'C'=Chamber."
+      - name: "st_ProductLine"
+        type: "VARCHAR(255)"
+        description: "Product Line (e.g., 3DI, CT, SPS...)."
+      - name: "st_BP"
+        type: "VARCHAR(255)"
+        description: "Customer Name (Short)."
+      - name: "st_Fab"
+        type: "VARCHAR(255)"
+        description: "Customer Fab Name."
+      - name: "st_BU"
+        type: "VARCHAR(255)"
+        description: "Business Unit."
+      - name: "st_City"
+        type: "VARCHAR(255)"
+        description: "City."
+      - name: "st_Site"
+        type: "VARCHAR(255)"
+        description: "Site (e.g., Hefei Site)."
+      - name: "st_MachineModelName"
+        type: "VARCHAR(255)"
+        description: "Machine Model Name."
+      - name: "dt_MachineFactoryShippingDate"
+        type: "DATETIME"
+        description: "Factory Shipping Date."
+      - name: "dt_MachineMoveInDate"
+        type: "DATETIME"
+        description: "Move-in Date."
+      - name: "dt_MachineStartUpHardwareEndDate"
+        type: "DATETIME"
+        description: "Hardware Install End Date."
+      - name: "dt_MachineWarrantyStartDate"
+        type: "DATETIME"
+        description: "Warranty Start Date."
+      - name: "dt_MachineWarrantyExpiryDate"
+        type: "DATETIME"
+        description: "Warranty Expiry Date."
+      - name: "st_WrMonth"
+        type: "VARCHAR(6)"
+        description: "Data Version (YYYYMM)."
+
+kpi_definitions:
+  headcount:
+    description: "Total number of active employees (st_EmpAvailable='1')."
+    table_name: "dws_tas_roster"
+    time_column: "st_WrMonth"
+    scope_columns:
+      organization: "st_OrgName"
+      product: "st_DeptName"
+      individual: "st_EmpNameCN"
+    sql_template: |
+      SELECT COUNT(DISTINCT st_EmpID) 
+      FROM dws_tas_roster 
+      WHERE st_EmpAvailable = '1' 
+        AND {conditions}
+  
+  fe_count:
+    description: "FE人数统计, Field Engineer (FE) count. Keywords: FE, Field Engineer, FE人数, FE数量."
+    table_name: "dws_tas_roster"
+    time_column: "st_WrMonth"
+    scope_columns:
+      organization: "st_OrgName"
+      product: "st_DeptName"
+      individual: "st_EmpNameCN"
+    sql_template: |
+      SELECT COUNT(DISTINCT st_EmpID) 
+      FROM dws_tas_roster 
+      WHERE st_EmpAvailable = '1' 
+        AND st_LEOName = 'E'
+        AND {conditions}
+
+  os_count:
+    description: "OS人数统计, Outsourced Staff (OS) count. Keywords: OS, Outsourced, 外协人数, 外协数量."
+    table_name: "dws_tas_roster"
+    time_column: "st_WrMonth"
+    scope_columns:
+      organization: "st_OrgName"
+      product: "st_DeptName"
+      individual: "st_EmpNameCN"
+    sql_template: |
+      SELECT COUNT(DISTINCT st_EmpID) 
+      FROM dws_tas_roster 
+      WHERE st_EmpAvailable = '1' 
+        AND st_LEOName LIKE 'O%'
+        AND {conditions}
+
+  machine_count:
+    description: "机台数量统计, Total number of machines (st_MachineClusterFlag='R')."
+    table_name: "dws_wisdom_machine"
+    time_column: "st_WrMonth"
+    scope_columns:
+      organization: "st_BU"
+      product: "st_ProductLine"
+      individual: "st_BP"
+      tools: "st_MachineModelName"
+    sql_template: |
+      SELECT COUNT(DISTINCT st_SN) 
+      FROM dws_wisdom_machine 
+      WHERE st_MachineClusterFlag = 'R'
+        AND {conditions}
+
+  chamber_count:
+    description: "Total number of chambers (st_MachineClusterFlag='C')."
+    table_name: "dws_wisdom_machine"
+    time_column: "st_WrMonth"
+    scope_columns:
+      organization: "st_BU"
+      product: "st_ProductLine"
+      individual: "st_BP"
+      tools: "st_MachineModelName"
+    sql_template: |
+      SELECT COUNT(DISTINCT st_SN) 
+      FROM dws_wisdom_machine 
+      WHERE st_MachineClusterFlag = 'C'
+        AND {conditions}
+
+example_sqls:
+  - question: "How many active employees are there?"
+    sql: "SELECT COUNT(DISTINCT st_EmpID) FROM dws_tas_roster WHERE st_EmpAvailable = '1' AND st_WrMonth = (SELECT MAX(st_WrMonth) FROM dws_tas_roster)"
+  
+  - question: "CT有多少FE"
+    sql: "SELECT COUNT(DISTINCT st_EmpID) FROM dws_tas_roster WHERE st_ClassName = 'FE' AND st_DeptName = 'CT' AND st_EmpAvailable = '1' AND st_WrMonth = (SELECT MAX(st_WrMonth) FROM dws_tas_roster)"
+  
+  - question: "Show me the headcount for 3DI department."
+    sql: "SELECT COUNT(DISTINCT st_EmpID) FROM dws_tas_roster WHERE st_EmpAvailable = '1' AND st_DeptName = '3DI' AND st_WrMonth = (SELECT MAX(st_WrMonth) FROM dws_tas_roster)"
+
+  - question: "How many machines in Hefei?"
+    sql: "SELECT COUNT(DISTINCT st_SN) FROM dws_wisdom_machine WHERE st_MachineClusterFlag = 'R' AND st_City LIKE '%合肥%' AND st_WrMonth = (SELECT MAX(st_WrMonth) FROM dws_wisdom_machine)"
+
+  - question: "List all FEs in SPS department."
+    sql: "SELECT st_EmpNameCN, st_EmpID FROM dws_tas_roster WHERE st_ClassName = 'FE' AND st_DeptName = 'SPS' AND st_EmpAvailable = '1' AND st_WrMonth = (SELECT MAX(st_WrMonth) FROM dws_tas_roster)"
+  
+  - question: "Count of machines by product line."
+    sql: "SELECT st_ProductLine, COUNT(DISTINCT st_SN) as cnt FROM dws_wisdom_machine WHERE st_MachineClusterFlag = 'R' AND st_WrMonth = (SELECT MAX(st_WrMonth) FROM dws_wisdom_machine) GROUP BY st_ProductLine"

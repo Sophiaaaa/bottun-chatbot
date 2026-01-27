@@ -1,0 +1,43 @@
+kpi_levels:
+  level1: 
+    - label: "employee"
+      value: "employee"
+    - label: "machine"
+      value: "machine"
+    - label: "Performance"
+      value: "performance"
+  level2_mapping:
+    employee:
+      - label: "FE人数统计"
+        value: "fe_count"
+        time_types: ["month"]
+      - label: "OS人数统计"
+        value: "os_count"
+        time_types: ["month"]
+    machine:
+      - label: "机台数量统计"
+        value: "machine_count"
+        time_types: ["month"]
+      - label: "Chamber数量统计"
+        value: "chamber_count"
+        time_types: ["month"]
+
+time_options:
+  types:
+    - label: "FY"
+      value: "fy"
+    - label: "HalfFY"
+      value: "half"
+    - label: "Month"
+      value: "month"
+
+scope_options:
+  categories:
+    - label: "Product"
+      value: "product"
+    - label: "Organization"
+      value: "organization"
+    - label: "Individual"
+      value: "individual"
+    - label: "Tools"
+      value: "tools"
