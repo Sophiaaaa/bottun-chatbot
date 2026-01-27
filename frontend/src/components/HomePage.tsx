@@ -34,10 +34,9 @@ const HomePage: React.FC<HomePageProps> = ({ onSendMessage }) => {
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] px-4 bg-white animate-in fade-in duration-700">
       {/* Logo & Title */}
       <div className="flex items-center gap-4 mb-16">
-        <div className="w-14 h-14 bg-blue-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-100">
-          <Zap size={32} fill="currentColor" />
+        <div className="w-14 h-14 bg-blue-500 rounded-full shadow-lg shadow-blue-100">
         </div>
-        <h1 className="text-5xl font-bold text-gray-800 tracking-tight">测试</h1>
+        <h1 className="text-5xl font-bold text-gray-800 tracking-tight">Demo</h1>
       </div>
 
       {/* Search Input Box */}

@@ -190,10 +190,9 @@ const App: React.FC = () => {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-2">
-          <div className="bg-blue-600 text-white p-2 rounded-lg">
-            <Sparkles size={20} />
+          <div className="w-8 h-8 bg-blue-600 rounded-full">
           </div>
-          <h1 className="text-xl font-bold text-gray-800">数据查询助手</h1>
+          <h1 className="text-xl font-bold text-gray-800">Demo</h1>
         </div>
         {!isHomeActive && (
           <button 
