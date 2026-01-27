@@ -149,14 +149,49 @@ class AIService:
         kpi_definitions = kpi_config.get('kpi_definitions', {})
         matched_kpi = None
         
-        # Check if query matches a KPI key or is contained in the description
-        for k, v in kpi_definitions.items():
-            desc = v.get('description', '').lower()
-            # If query is exactly a key or contained in description/keywords
-            if query.lower() == k.lower() or query.lower() in desc:
-                matched_kpi = k
-                print(f"Direct match found for KPI: {k}")
+        # Priority mapping for common queries (ordered by specificity)
+        priority_keywords = [
+            ("fe人数", "fe_count"),
+            ("fe数量", "fe_count"),
+            ("fe", "fe_count"),
+            ("field engineer", "fe_count"),
+            ("外协", "os_count"),
+            ("os", "os_count"),
+            ("机台", "machine_count"),
+            ("机器", "machine_count"),
+            ("machine", "machine_count"),
+            ("chamber", "chamber_count"),
+            ("小室", "chamber_count"),
+            ("人数统计", "headcount"),
+            ("人数", "headcount"),
+            ("人员", "headcount")
+        ]
+
+        # Check for priority keywords first
+        query_lower = query.lower()
+        for kw, kpi_key in priority_keywords:
+            if kw in query_lower:
+                matched_kpi = kpi_key
+                print(f"Priority keyword match: {kw} -> {kpi_key}")
                 break
+
+        # If still no match, check descriptions
+        if not matched_kpi:
+            for k, v in kpi_definitions.items():
+                desc = v.get('description', '').lower()
+                if query_lower == k.lower() or query_lower in desc:
+                    matched_kpi = k
+                    print(f"Description match found for KPI: {k}")
+                    break
+        
+        # If we have a strong match and the query is simple, short-circuit
+        if matched_kpi and len(query) < 15:
+            return {
+                "kpi": matched_kpi, 
+                "time_range": None, 
+                "scope": [], 
+                "missing_params": ["time_range", "scope"]
+            }
         
         # Construct a prompt to analyze the user's query
         kpi_info = {k: v.get('description', '') for k, v in kpi_definitions.items()}
@@ -219,187 +254,175 @@ class AIService:
         # Fallback if parsing fails
         return {"kpi": None, "time_range": None, "scope": None, "missing_params": ["kpi", "time_range", "scope"]}
 
-    def generate_where_clause(self, kpi: str, time_range: str, scope: List[str], kpi_config: Dict) -> str:
+    def _build_conditions_programmatically(self, kpi: str, time_range: str, scope: List[str], kpi_config: Dict) -> str:
+        """Constructs WHERE clause conditions programmatically as a fallback."""
         kpi_def = kpi_config.get('kpi_definitions', {}).get(kpi, {})
-        table_name = kpi_def.get('table_name', "")
         time_col = kpi_def.get('time_column', "")
         scope_cols = kpi_def.get('scope_columns', {})
         
-        prompt = f"""
-        [Instruction]
-        Generate ONLY the raw MySQL WHERE clause conditions. 
-        NO explanations, NO conversational text, NO markdown code blocks, NO thought process.
+        conditions = []
         
-        [Input]
-        Table: {table_name}
-        KPI: {kpi}
-        Time: {time_range} (Column: {time_col})
-        Scope: {scope} (Mapping: {json.dumps(scope_cols, ensure_ascii=False)})
-        
-        [Logic]
-        1. If Time is provided, use `{time_col} = 'TIME_VALUE'`.
-        2. If Time is null/missing, use `{time_col} = (SELECT MAX({time_col}) FROM {table_name})`.
-        3. If Scope is provided, map category to column name.
-        4. If multiple values for the SAME category exist, use `IN ('val1', 'val2')`.
-        5. If values for DIFFERENT categories exist, use `AND`.
-        
-        [Example]
-        Input Scope: ["product:3DI", "product:CT"], Time: "202506"
-        Output: {time_col} = '202506' AND st_DeptName IN ('3DI', 'CT')
-        
-        [Output]
-        (Your conditions here)
-        """
-        print(f"Generating WHERE clause for {kpi}...")
-        raw_response = self.generate_response(prompt).strip()
-        
-        # Clean up <think> tags if present
-        if "</think>" in raw_response:
-            conditions = raw_response.split("</think>")[-1].strip()
+        # 1. Handle Time
+        if time_range:
+            conditions.append(f"{time_col} = '{time_range}'")
         else:
-            conditions = raw_response
+            conditions.append(f"{time_col} = (SELECT MAX({time_col}) FROM {kpi_def.get('table_name')})")
             
-        # Clean up any potential markdown or extra text
-        if "```" in conditions:
-            conditions = conditions.split("```")[1]
-            if conditions.startswith("sql"):
-                conditions = conditions[3:].strip()
+        # 2. Handle Scope
+        if scope:
+            # Group scope values by category
+            scope_map = {}
+            for s in scope:
+                if ":" in s:
+                    cat, val = s.split(":", 1)
+                    if cat in scope_map:
+                        scope_map[cat].append(val)
+                    else:
+                        scope_map[cat] = [val]
+            
+            for cat, values in scope_map.items():
+                col = scope_cols.get(cat)
+                if col:
+                    if len(values) == 1:
+                        conditions.append(f"{col} = '{values[0]}'")
+                    else:
+                        vals_str = ", ".join([f"'{v}'" for v in values])
+                        conditions.append(f"{col} IN ({vals_str})")
         
-        # Remove common "thinking" prefixes if they leak through
-        if "Output:" in conditions:
-            conditions = conditions.split("Output:")[-1].strip()
-        
-        # Ensure it's just a single line/block of conditions
-        conditions = conditions.split('\n')[0] if '\n' in conditions else conditions
-        
-        # Remove surrounding quotes if AI added them
-        conditions = conditions.strip()
-        if (conditions.startswith('"') and conditions.endswith('"')) or \
-           (conditions.startswith("'") and conditions.endswith("'")):
-            conditions = conditions[1:-1].strip()
-        
-        if not conditions:
+        return " AND ".join(conditions)
+
+    def generate_where_clause(self, kpi: str, time_range: str, scope: List[str], kpi_config: Dict) -> str:
+        """Generates WHERE clause. Skips AI if parameters are clear to save time."""
+        kpi_def = kpi_config.get('kpi_definitions', {}).get(kpi, {})
+        if not kpi_def:
             return ""
-            
-        # If it's a GROUP BY, return as is
-        if conditions.upper().startswith("GROUP BY"):
-            return conditions
-            
-        # Ensure it doesn't start with AND for now, we'll let the template/caller handle it
-        # but wait, the caller in main.py expects to just replace.
-        # Let's make it return " AND conditions" if it's a condition.
+
+        # Programmatic generation is much faster and reliable for clear params
+        print(f"Generating conditions programmatically for {kpi}...")
+        conditions = self._build_conditions_programmatically(kpi, time_range, scope, kpi_config)
+        
         if not conditions.upper().startswith("AND "):
             return f" AND {conditions}"
-            
         return f" {conditions}"
 
     def generate_sql(self, kpi: str, time_range: str, scope: List[str], kpi_config: Dict) -> str:
-        # Get SQL template for the KPI
+        """Generates full SQL. Skips AI if parameters are clear to save time."""
         kpi_def = kpi_config.get('kpi_definitions', {}).get(kpi, {})
         template = kpi_def.get('sql_template', "")
-        table_name = kpi_def.get('table_name', "")
-        time_col = kpi_def.get('time_column', "")
         scope_cols = kpi_def.get('scope_columns', {})
         
         if not template:
             return ""
+
+        print(f"Generating SQL programmatically for {kpi}...")
+        conditions = self._build_conditions_programmatically(kpi, time_range, scope, kpi_config)
+        
+        # Check if we need GROUP BY
+        has_multiple_values = False
+        group_col = None
+        if scope:
+            scope_map = {}
+            for s in scope:
+                if ":" in s:
+                    cat, val = s.split(":", 1)
+                    scope_map.setdefault(cat, []).append(val)
             
-        prompt = f"""
-        [Instruction]
-        Generate ONLY the raw MySQL WHERE clause conditions. 
-        If multiple values for the SAME scope category are provided, the user wants a breakdown.
-        In that case, append a `GROUP BY` clause to the conditions.
+            for cat, values in scope_map.items():
+                if len(values) > 1:
+                    has_multiple_values = True
+                    group_col = scope_cols.get(cat)
+                    break
         
-        NO explanations, NO conversational text, NO markdown code blocks, NO thought process.
-        
-        [Input]
-        Table: {table_name}
-        KPI: {kpi}
-        Time: {time_range} (Column: {time_col})
-        Scope: {scope} (Mapping: {json.dumps(scope_cols, ensure_ascii=False)})
-        
-        [Logic]
-        1. Basic WHERE: `{time_col} = '...' AND scope_col = '...'`.
-        2. Multiple values in same category: Use `scope_col IN ('val1', 'val2')`.
-        3. Breakdown Rule: ONLY IF Scope has MORE THAN ONE value in the SAME category (e.g., 2+ products), 
-           append `GROUP BY scope_column_name` at the end.
-        4. Single Value Rule: If only ONE value is provided for a category (e.g., just one product), 
-           do NOT use `GROUP BY`.
-        5. IMPORTANT: If grouping, the KPI template `SELECT COUNT(...)` will be handled by the system, 
-           you just provide the `WHERE ... GROUP BY ...` part.
-        
-        [Example 1 - Multiple]
-        Input Scope: ["product:3DI", "product:CT"], Time: "202506"
-        Output: {time_col} = '202506' AND st_DeptName IN ('3DI', 'CT') GROUP BY st_DeptName
-        
-        [Example 2 - Single]
-        Input Scope: ["product:CT"], Time: "202506"
-        Output: {time_col} = '202506' AND st_DeptName = 'CT'
-        
-        [Output]
-        (Your conditions here)
-        """
-        print(f"Generating SQL conditions for {kpi}...")
-        raw_response = self.generate_response(prompt).strip()
-        
-        # Clean up <think> tags if present
-        if "</think>" in raw_response:
-            conditions = raw_response.split("</think>")[-1].strip()
-        else:
-            conditions = raw_response
-            
-        # Clean up any potential markdown or extra text
-        if "```" in conditions:
-            conditions = conditions.split("```")[1]
-            if conditions.startswith("sql"):
-                conditions = conditions[3:].strip()
-        
-        # Remove common "thinking" prefixes if they leak through
-        if "Output:" in conditions:
-            conditions = conditions.split("Output:")[-1].strip()
-        
-        # Ensure it's just a single line/block of conditions
-        conditions = conditions.split('\n')[0] if '\n' in conditions else conditions
-        
-        # Remove surrounding quotes if AI added them (safely)
-        conditions = conditions.strip()
-        if (conditions.startswith('"') and conditions.endswith('"')) or \
-           (conditions.startswith("'") and conditions.endswith("'")):
-            conditions = conditions[1:-1].strip()
-        
-        # --- Fix for trailing AND issue ---
+        if has_multiple_values and group_col:
+            conditions += f" GROUP BY {group_col}"
+
+        # Final assembly
         if conditions:
-            # If it starts with GROUP BY, don't add AND
             if conditions.upper().strip().startswith("GROUP BY"):
                 final_sql = template.replace("{conditions}", conditions)
             else:
-                # Add AND if not already there (AI might add it)
-                if not conditions.upper().strip().startswith("AND "):
-                    final_sql = template.replace("{conditions}", f" AND {conditions}")
-                else:
-                    final_sql = template.replace("{conditions}", f" {conditions}")
+                final_sql = template.replace("{conditions}", f" AND {conditions}")
         else:
             final_sql = template.replace("{conditions}", "")
         
-        # Check if we need to adjust the SELECT clause for GROUP BY
-        # (Already handled above by final_sql assignment if conditions exists)
+        # Adjust SELECT for GROUP BY
+        if group_col and "GROUP BY" in conditions.upper():
+            if "SELECT COUNT" in final_sql.upper() and group_col not in final_sql.split("FROM")[0]:
+                final_sql = final_sql.replace("SELECT ", f"SELECT {group_col}, ", 1)
         
-        if "GROUP BY" in conditions.upper():
-            # Use regex or find to get the part after GROUP BY with original casing
-            import re
-            match = re.search(r'GROUP\s+BY\s+(.*)', conditions, re.IGNORECASE)
-            if match:
-                group_col = match.group(1).strip()
-                # If the template starts with SELECT COUNT, insert the group column
-                if "SELECT COUNT" in final_sql.upper():
-                    final_sql = final_sql.replace("SELECT ", f"SELECT {group_col}, ", 1)
-        
-        print(f"Final SQL: {final_sql}")
+        print(f"Final SQL (Programmatic): {final_sql}")
         return final_sql
 
+
+
     def summarize_result(self, kpi: str, time_range: str, scope: List[str], data: Any, kpi_config: Dict) -> str:
-        kpi_desc = kpi_config.get('kpi_definitions', {}).get(kpi, {}).get('description', kpi)
+        kpi_def = kpi_config.get('kpi_definitions', {}).get(kpi, {})
+        kpi_desc = kpi_def.get('description', kpi).split(',')[0].split('.')[0].strip()
+        scope_cols = kpi_def.get('scope_columns', {})
         
+        # Reverse mapping for columns to friendly names
+        col_to_label = {v: k.capitalize() for k, v in scope_cols.items()}
+        # Common database columns to friendly names
+        friendly_names = {
+            "st_WrMonth": "月份",
+            "st_DeptName": "产品组",
+            "st_OrgName": "组织架构",
+            "st_EmpNameCN": "姓名",
+            "st_ProductLine": "产品线",
+            "st_BU": "业务单元",
+            "st_SN": "序列号",
+            "st_EmpID": "工号",
+            "st_ClassName": "岗位类别",
+            "st_WorkLocation": "工作地点",
+            "st_LEOName": "用工类型"
+        }
+        col_to_label.update(friendly_names)
+
+        def get_friendly_name(col):
+            if col in col_to_label:
+                return col_to_label[col]
+            if "COUNT" in col.upper():
+                return "数量"
+            return col
+
+        # Programmatic summary for simple data to save time
+        if isinstance(data, list):
+            if len(data) == 0:
+                return "当前系统中暂无相关数据。"
+            
+            if len(data) == 1:
+                row = data[0]
+                if len(row) == 1:
+                    val = list(row.values())[0]
+                    return f"为您查到，{kpi_desc}的结果是：**{val}**。"
+                else:
+                    details = "，".join([f"{get_friendly_name(k)}为 {v}" for k, v in row.items()])
+                    return f"为您查到：{details}。"
+
+            # Multiple rows - Format as a Markdown Table
+            columns = list(data[0].keys())
+            friendly_cols = [get_friendly_name(c) for c in columns]
+            
+            # Header
+            table = f"为您查到以下 **{kpi_desc}** 统计结果：\n\n"
+            table += "| " + " | ".join(friendly_cols) + " |\n"
+            table += "| " + " | ".join(["---"] * len(columns)) + " |\n"
+            
+            # Rows
+            for row in data:
+                # Format values (e.g. bold numbers)
+                row_values = []
+                for c in columns:
+                    val = row.get(c, "")
+                    if isinstance(val, (int, float)):
+                        row_values.append(f"**{val}**")
+                    else:
+                        row_values.append(str(val))
+                table += "| " + " | ".join(row_values) + " |\n"
+            
+            return table
+
+        # Fallback to AI for very complex data if needed
         prompt = f"""
         [Task]
         Summarize the data result in a natural, friendly Chinese sentence. 

@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
 import uvicorn
 import io
+import os
 import pandas as pd
 from services import ConfigService, DatabaseService, AIService
 
@@ -22,7 +23,9 @@ app.add_middleware(
 # Initialize Services
 config_service = ConfigService()
 db_service = DatabaseService(config_service.get_db_config())
-ai_service = AIService(model="qwen3:8b") # Updated to match ollama list output
+# Use a more likely model name or allow env override
+model_name = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
+ai_service = AIService(model=model_name)
 
 # --- Pydantic Models ---
 class ChatRequest(BaseModel):

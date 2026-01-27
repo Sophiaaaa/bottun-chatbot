@@ -170,6 +170,17 @@ const App: React.FC = () => {
   };
 
   const addBotMessage = (text: string, actions?: any, statusAnalysis?: AnalysisResponse, sql?: string) => {
+    // Helper to get friendly KPI label
+    const getKPILabel = (value?: string | null) => {
+      if (!value || !uiConfig) return value;
+      const mapping = uiConfig.kpi_levels.level2_mapping;
+      for (const level of Object.keys(mapping)) {
+        const found = mapping[level].find(k => k.value === value);
+        if (found) return found.label;
+      }
+      return value;
+    };
+
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
       sender: 'bot',
@@ -177,7 +188,7 @@ const App: React.FC = () => {
       timestamp: new Date(),
       actions,
       status: statusAnalysis ? {
-        kpi: statusAnalysis.kpi || undefined,
+        kpi: getKPILabel(statusAnalysis.kpi) || undefined,
         timeRange: statusAnalysis.time_range || undefined,
         scope: statusAnalysis.scope ? (Array.isArray(statusAnalysis.scope) ? statusAnalysis.scope.join(', ') : statusAnalysis.scope) : undefined,
         sql: sql

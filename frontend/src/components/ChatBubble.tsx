@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Message } from '../types';
 import { Bot, User, FileText, BarChart, Loader2 } from 'lucide-react';
 import { downloadDetail } from '../api';
@@ -49,10 +51,38 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, children, onViewChart 
         <div className={clsx("flex flex-col", isChart ? "flex-1" : "")}>
           <div className={clsx(
             "p-4 rounded-2xl shadow-sm",
-            isBot ? "bg-white border border-gray-100 rounded-tl-none" : "bg-blue-600 text-white rounded-tr-none",
+            isBot ? "bg-white border border-gray-100 rounded-tl-none text-gray-800" : "bg-blue-600 text-white rounded-tr-none",
             isChart ? "w-full" : ""
           )}>
-            <p className="whitespace-pre-wrap">{message.text}</p>
+            <div className={clsx(
+              "markdown-content",
+              isBot ? "prose-blue" : "prose-invert"
+            )}>
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  table: ({node, ...props}) => (
+                    <div className="overflow-x-auto my-2">
+                      <table className="min-w-full border-collapse border border-gray-200 text-sm" {...props} />
+                    </div>
+                  ),
+                  th: ({node, ...props}) => (
+                    <th className="border border-gray-200 px-4 py-2 bg-gray-50 font-bold text-left" {...props} />
+                  ),
+                  td: ({node, ...props}) => (
+                    <td className="border border-gray-200 px-4 py-2" {...props} />
+                  ),
+                  strong: ({node, ...props}) => (
+                     <strong className={clsx("font-bold", isBot ? "text-blue-600" : "text-white underline underline-offset-2")} {...props} />
+                   ),
+                  p: ({node, ...props}) => (
+                    <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
+                  )
+                }}
+              >
+                {message.text}
+              </ReactMarkdown>
+            </div>
             
             {/* Interactive Children (Selectors, Charts, etc.) */}
             {children && <div className="mt-3">{children}</div>}
@@ -84,15 +114,10 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, children, onViewChart 
 
           {/* Status / Context Display */}
           {isBot && message.status && (
-            <div className="mt-1 ml-1 text-xs text-gray-400 italic space-y-0.5">
-              {message.status.kpi && <p>已确认 KPI: {message.status.kpi}</p>}
-              {message.status.timeRange && <p>已确认时间: {message.status.timeRange}</p>}
-              {message.status.scope && <p>已确认范围: {message.status.scope}</p>}
-              {message.status.sql && (
-                <p className="font-mono text-[10px] mt-1 bg-gray-50 p-1 rounded border border-gray-100">
-                  SQL: {message.status.sql}
-                </p>
-              )}
+            <div className="mt-2 ml-1 text-[11px] text-gray-400 italic space-y-0.5 border-l-2 border-gray-100 pl-2">
+              {message.status.kpi && <p>查询指标: {message.status.kpi}</p>}
+              {message.status.timeRange && <p>时间范围: {message.status.timeRange}</p>}
+              {message.status.scope && <p>筛选维度: {message.status.scope}</p>}
             </div>
           )}
         </div>
