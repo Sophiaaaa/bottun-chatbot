@@ -190,7 +190,11 @@ const App: React.FC = () => {
       status: statusAnalysis ? {
         kpi: getKPILabel(statusAnalysis.kpi) || undefined,
         timeRange: statusAnalysis.time_range || undefined,
-        scope: statusAnalysis.scope ? (Array.isArray(statusAnalysis.scope) ? statusAnalysis.scope.join(', ') : statusAnalysis.scope) : undefined,
+        scope: statusAnalysis.scope ? 
+          (Array.isArray(statusAnalysis.scope) ? 
+            statusAnalysis.scope.map((s: string) => s.includes(':') ? s.split(':')[1] : s).join(', ') : 
+            statusAnalysis.scope
+          ) : undefined,
         sql: sql
       } : undefined
     }]);

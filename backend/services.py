@@ -175,6 +175,14 @@ class AIService:
                 print(f"Priority keyword match: {kw} -> {kpi_key}")
                 break
 
+        # Manual scope extraction for common products to be safe
+        found_scopes = []
+        known_products = ["CT", "3DI", "SPS", "ES", "SPS", "SSP", "TPS"]
+        for prod in known_products:
+            if prod.lower() in query_lower:
+                found_scopes.append(f"product:{prod}")
+                print(f"Manual scope match: {prod}")
+
         # If still no match, check descriptions
         if not matched_kpi:
             for k, v in kpi_definitions.items():
@@ -184,13 +192,26 @@ class AIService:
                     print(f"Description match found for KPI: {k}")
                     break
         
-        # If we have a strong match and the query is simple, short-circuit
-        if matched_kpi and len(query) < 15:
+        # If we have a strong match, only short-circuit if the query is VERY simple 
+        # (e.g. just the keyword itself) to avoid missing other params like "CT" in "CT有多少FE"
+        is_exact_match = any(query_lower == kw for kw, _ in priority_keywords)
+        
+        # If we found both KPI and some scopes manually, we can also short-circuit
+        if matched_kpi and (is_exact_match or len(query) < 5 or found_scopes):
+            # Extract time if possible (simple YYYYMM pattern)
+            import re
+            time_match = re.search(r'\b(20\d{4})\b', query)
+            extracted_time = time_match.group(1) if time_match else None
+            
+            missing = []
+            if not extracted_time: missing.append("time_range")
+            if not found_scopes: missing.append("scope")
+            
             return {
                 "kpi": matched_kpi, 
-                "time_range": None, 
-                "scope": [], 
-                "missing_params": ["time_range", "scope"]
+                "time_range": extracted_time, 
+                "scope": found_scopes, 
+                "missing_params": missing
             }
         
         # Construct a prompt to analyze the user's query
