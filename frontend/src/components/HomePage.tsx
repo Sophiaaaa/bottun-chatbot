@@ -34,7 +34,7 @@ const HomePage: React.FC<HomePageProps> = ({ onSendMessage }) => {
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] px-4 bg-white animate-in fade-in duration-700">
       {/* Logo & Title */}
       <div className="flex items-center gap-4 mb-16">
-        <div className="w-14 h-14 bg-blue-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-100">
+        <div className="w-14 h-14 bg-black rounded-full flex items-center justify-center text-white shadow-lg shadow-gray-100">
           <Zap size={32} fill="currentColor" />
         </div>
         <h1 className="text-5xl font-bold text-gray-800 tracking-tight">测试</h1>
@@ -72,7 +72,7 @@ const HomePage: React.FC<HomePageProps> = ({ onSendMessage }) => {
               onClick={() => onSendMessage(item.title)}
               className="group text-left p-4 hover:bg-gray-50 rounded-2xl transition-all duration-200"
             >
-              <div className="text-base font-bold text-gray-700 group-hover:text-blue-600 transition-colors">
+              <div className="text-base font-bold text-gray-700 group-hover:text-black transition-colors">
                 {item.title}
               </div>
               <div className="text-sm text-gray-400">

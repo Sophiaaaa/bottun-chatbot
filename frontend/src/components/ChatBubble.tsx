@@ -40,7 +40,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, children, onViewChart 
         {/* Avatar */}
         <div className={clsx(
           "flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center mx-2",
-          isBot ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-600"
+          isBot ? "bg-black text-white" : "bg-gray-200 text-gray-600"
         )}>
           {isBot ? <Bot size={18} /> : <User size={18} />}
         </div>
@@ -49,7 +49,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, children, onViewChart 
         <div className={clsx("flex flex-col", isChart ? "flex-1" : "")}>
           <div className={clsx(
             "p-4 rounded-2xl shadow-sm",
-            isBot ? "bg-white border border-gray-100 rounded-tl-none" : "bg-blue-600 text-white rounded-tr-none",
+            isBot ? "bg-white border border-gray-100 rounded-tl-none" : "bg-black text-white rounded-tr-none",
             isChart ? "w-full" : ""
           )}>
             <p className="whitespace-pre-wrap">{message.text}</p>
@@ -73,7 +73,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, children, onViewChart 
                  {message.actions.showChart && (
                    <button 
                     onClick={onViewChart}
-                    className="flex items-center gap-1 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-2 rounded transition-colors"
+                    className="flex items-center gap-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-2 rounded transition-colors"
                    >
                      <BarChart size={14} /> 查看图表
                    </button>

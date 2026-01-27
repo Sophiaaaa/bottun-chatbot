@@ -190,7 +190,7 @@ const App: React.FC = () => {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-2">
-          <div className="bg-blue-600 text-white p-2 rounded-lg">
+          <div className="bg-black text-white p-2 rounded-lg">
             <Sparkles size={20} />
           </div>
           <h1 className="text-xl font-bold text-gray-800">数据查询助手</h1>
@@ -263,7 +263,7 @@ const App: React.FC = () => {
             <div className="max-w-3xl mx-auto relative">
               <input
                 type="text"
-                className="w-full pl-4 pr-12 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+                className="w-full pl-4 pr-12 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent shadow-sm"
                 placeholder="咨询关于人数、机台或绩效的数据..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -271,7 +271,7 @@ const App: React.FC = () => {
                 disabled={isLoading}
               />
               <button
-                className="absolute right-2 top-2 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="absolute right-2 top-2 p-1.5 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
                 onClick={() => handleSend()}
                 disabled={isLoading || !input.trim()}
               >

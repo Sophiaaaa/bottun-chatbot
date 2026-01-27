@@ -47,7 +47,7 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
           {config.kpi_levels.level1.map((item) => (
             <button
               key={item.value}
-              className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 text-sm transition-colors"
+              className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full hover:bg-gray-200 text-sm transition-colors border border-gray-200"
               onClick={() => {
                 setLevel1Kpi(item.value);
                 setShowLevel2(true);
@@ -69,7 +69,7 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
             {level2Options.map((item) => (
               <button
                 key={item.value}
-                className="text-left px-3 py-2 hover:bg-white rounded text-sm text-gray-700 flex justify-between items-center group"
+                className="text-left px-3 py-2 hover:bg-white rounded text-sm text-gray-800 flex justify-between items-center group"
                 onClick={() => onSelect(item.value)}
               >
                 {item.label}
@@ -77,7 +77,7 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
               </button>
             ))}
             <button 
-              className="text-xs text-blue-500 mt-2 text-left"
+              className="text-xs text-gray-500 mt-2 text-left hover:text-black transition-colors"
               onClick={() => setLevel1Kpi(null)}
             >
               ← 返回
@@ -113,8 +113,8 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
               <button
                 className={`px-3 py-1 rounded-full text-sm transition-colors flex items-center gap-1 border ${
                   openDropdown === 'time' 
-                    ? 'bg-blue-600 text-white border-blue-600' 
-                    : 'bg-blue-100 text-blue-700 border-transparent hover:bg-blue-200'
+                    ? 'bg-black text-white border-black' 
+                    : 'bg-gray-100 text-gray-800 border-transparent hover:bg-gray-200'
                 }`}
                 onClick={() => fetchValues('time')}
               >
@@ -125,14 +125,14 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
               {openDropdown === 'time' && (
                 <div className="absolute top-full left-0 mt-1 w-48 bg-white shadow-xl rounded-md border border-gray-200 z-50 p-2 max-h-60 overflow-y-auto">
                    {loadingType === 'time' ? (
-                     <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-blue-600" size={20} /></div>
+                     <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-gray-800" size={20} /></div>
                    ) : (
                      dynamicValues['time']?.length > 0 ? (
                        <div className="flex flex-col gap-1">
                          {dynamicValues['time'].map(val => (
                            <button 
                               key={val}
-                              className="block w-full text-left px-3 py-2 hover:bg-blue-50 text-sm rounded transition-colors text-gray-700"
+                              className="block w-full text-left px-3 py-2 hover:bg-gray-50 text-sm rounded transition-colors text-gray-800"
                               onClick={() => {
                                 onSelect(val);
                                 setOpenDropdown(null);
@@ -179,10 +179,10 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
                   className={clsx(
                     "px-3 py-1 rounded-full text-sm transition-colors border flex items-center gap-1",
                     openDropdown === item.value
-                      ? 'bg-blue-600 text-white border-blue-600'
+                      ? 'bg-black text-white border-black'
                       : hasSelectionInCategory
-                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                        ? 'bg-gray-100 text-gray-800 border-gray-300'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-gray-900'
                   )}
                   onClick={() => fetchValues(item.value)}
                 >
@@ -193,7 +193,7 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
                 {openDropdown === item.value && (
                   <div className="absolute top-full left-0 mt-1 w-48 bg-white shadow-xl rounded-md border border-gray-200 z-50 p-2 max-h-60 overflow-y-auto">
                     {loadingType === item.value ? (
-                      <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-blue-600" size={20} /></div>
+                      <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-gray-800" size={20} /></div>
                     ) : (
                       dynamicValues[item.value]?.length > 0 ? (
                         <div className="flex flex-col gap-1">
@@ -205,8 +205,8 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
                                 className={clsx(
                                   "block w-full text-left px-3 py-2 text-sm rounded transition-colors",
                                   isSelected 
-                                    ? "bg-blue-100 text-blue-800 font-medium" 
-                                    : "hover:bg-blue-50 text-gray-700"
+                                    ? "bg-gray-200 text-black font-medium" 
+                                    : "hover:bg-gray-50 text-gray-700"
                                 )}
                                 onClick={() => toggleScope(item.value, val)}
                               >
@@ -229,10 +229,10 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
 
         {/* Selected Summary and Confirm Button */}
         {selectedScopes.length > 0 && (
-          <div className="flex flex-col gap-2 p-2 bg-blue-50 rounded-lg border border-blue-100">
+          <div className="flex flex-col gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200">
             <div className="flex flex-wrap gap-1">
               {selectedScopes.map(s => (
-                <span key={s} className="px-2 py-0.5 bg-white text-blue-600 text-[10px] rounded border border-blue-200 flex items-center gap-1">
+                <span key={s} className="px-2 py-0.5 bg-white text-gray-800 text-[10px] rounded border border-gray-300 flex items-center gap-1">
                   {s.split(':')[1]}
                   <button onClick={() => setSelectedScopes(prev => prev.filter(ps => ps !== s))} className="hover:text-red-500">×</button>
                 </span>
@@ -240,7 +240,7 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
             </div>
             <button
               onClick={() => onSelect(selectedScopes)}
-              className="w-full py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+              className="w-full py-2 bg-black text-white rounded-md text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm"
             >
               确认选择 ({selectedScopes.length})
             </button>
