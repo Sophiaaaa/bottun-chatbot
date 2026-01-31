@@ -7,6 +7,9 @@ export interface Message {
     kpi?: string;
     timeRange?: string;
     scope?: string;
+    rawKpi?: string;
+    rawTimeRange?: string;
+    rawScope?: string[];
     sql?: string;
   };
   actions?: {

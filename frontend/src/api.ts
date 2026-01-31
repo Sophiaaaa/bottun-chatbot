@@ -22,8 +22,8 @@ export const analyzeQuery = async (query: string): Promise<AnalysisResponse> => 
   return response.data;
 };
 
-export const getDimensionValues = async (kpi: string, dimension_type: string): Promise<string[]> => {
-  const response = await api.post('/config/dimension', { kpi, dimension_type });
+export const getDimensionValues = async (kpi: string, dimension_type: string, current_selection?: string[]): Promise<string[]> => {
+  const response = await api.post('/config/dimension', { kpi, dimension_type, current_selection });
   return response.data.values;
 };
 

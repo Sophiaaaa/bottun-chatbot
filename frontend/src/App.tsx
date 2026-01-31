@@ -74,7 +74,7 @@ const App: React.FC = () => {
       const firstMissing = missing[0];
       let question = "";
       if (firstMissing === 'kpi') question = "您对哪个 KPI 指标感兴趣？";
-      else if (firstMissing === 'time_range') question = "您想查询哪个时间段的数据？";
+      else if (firstMissing === 'time_range') question = "请提供需要的时间范围，例如202601-202607";
       else if (firstMissing === 'scope') question = "查询范围是什么（产品线、部门等）？";
 
       addBotMessage(question, { missingParams: missing }, analysis);
@@ -195,6 +195,10 @@ const App: React.FC = () => {
             statusAnalysis.scope.map((s: string) => s.includes(':') ? s.split(':')[1] : s).join(', ') : 
             statusAnalysis.scope
           ) : undefined,
+        // Keep raw values for internal actions like download
+        rawKpi: statusAnalysis.kpi || undefined,
+        rawTimeRange: statusAnalysis.time_range || undefined,
+        rawScope: statusAnalysis.scope || undefined,
         sql: sql
       } : undefined
     }]);

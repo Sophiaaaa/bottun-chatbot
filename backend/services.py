@@ -50,7 +50,7 @@ class DatabaseService:
             print(f"DB Connection Error: {e}")
             return None
 
-    def get_unique_values(self, table_name: str, column_name: str) -> List[str]:
+    def get_unique_values(self, table_name: str, column_name: str, filters: Dict[str, List[str]] = None) -> List[str]:
         conn = self.get_connection()
         if not conn:
             # Mock values for demo
@@ -60,7 +60,22 @@ class DatabaseService:
             
         cursor = conn.cursor()
         try:
-            sql = f"SELECT DISTINCT {column_name} FROM {table_name} WHERE {column_name} IS NOT NULL ORDER BY {column_name} DESC LIMIT 100"
+            where_clause = f"{column_name} IS NOT NULL"
+            
+            # Add cascading filters
+            if filters:
+                for col, vals in filters.items():
+                    if not vals: continue
+                    if len(vals) == 1:
+                        where_clause += f" AND {col} = '{vals[0]}'"
+                    else:
+                        vals_str = ", ".join([f"'{v}'" for v in vals])
+                        where_clause += f" AND {col} IN ({vals_str})"
+            
+            # Search query logic is handled in frontend/API for simplicity, 
+            # but usually we'd add 'LIKE %query%' here if needed.
+            
+            sql = f"SELECT DISTINCT {column_name} FROM {table_name} WHERE {where_clause} ORDER BY {column_name} ASC LIMIT 100"
             cursor.execute(sql)
             results = cursor.fetchall()
             return [str(row[0]) for row in results]
@@ -151,6 +166,19 @@ class AIService:
         
         # Priority mapping for common queries (ordered by specificity)
         priority_keywords = [
+            # Full label matches (highest priority)
+            ("fe人数统计", "fe_count"),
+            ("os人数统计", "os_count"),
+            ("机台数量统计", "machine_count"),
+            ("chamber数量统计", "chamber_count"),
+
+            # Analysis Intent matches
+            ("fe人数分析", "fe_count"),
+            ("os人数分析", "os_count"),
+            ("机台数量分析", "machine_count"),
+            ("chamber数量分析", "chamber_count"),
+            
+            # Keywords
             ("fe人数", "fe_count"),
             ("fe数量", "fe_count"),
             ("fe", "fe_count"),
@@ -198,10 +226,17 @@ class AIService:
         
         # If we found both KPI and some scopes manually, we can also short-circuit
         if matched_kpi and (is_exact_match or len(query) < 5 or found_scopes):
-            # Extract time if possible (simple YYYYMM pattern)
+            # Extract time if possible (simple YYYYMM pattern or YYYYMM-YYYYMM range)
             import re
-            time_match = re.search(r'\b(20\d{4})\b', query)
-            extracted_time = time_match.group(1) if time_match else None
+            
+            # Check for range first: YYYYMM-YYYYMM
+            range_match = re.search(r'\b(20\d{4})-(20\d{4})\b', query)
+            if range_match:
+                extracted_time = f"{range_match.group(1)}-{range_match.group(2)}"
+            else:
+                # Check for single YYYYMM
+                time_match = re.search(r'\b(20\d{4})\b', query)
+                extracted_time = time_match.group(1) if time_match else None
             
             missing = []
             if not extracted_time: missing.append("time_range")
@@ -234,10 +269,10 @@ class AIService:
         
         [Rules]
         1. KPI 识别优先级：
-           - 如果用户提到 "FE", "Field Engineer", "FE人数", "FE数量", 匹配 "fe_count"。
-           - 如果用户提到 "OS", "Outsourced", "外协", 匹配 "os_count"。
-           - 如果用户提到 "机台", "机器", "Machine", 匹配 "machine_count"。
-           - 如果用户提到 "Chamber", "小室", 匹配 "chamber_count"。
+           - 如果用户提到 "FE", "Field Engineer", "FE人数", "FE数量", "FE人数分析", 匹配 "fe_count"。
+           - 如果用户提到 "OS", "Outsourced", "外协", "OS人数分析", 匹配 "os_count"。
+           - 如果用户提到 "机台", "机器", "Machine", "机台数量分析", 匹配 "machine_count"。
+           - 如果用户提到 "Chamber", "小室", "Chamber数量分析", 匹配 "chamber_count"。
            - 默认的人数统计匹配 "headcount"。
         2. Scope 识别：
            - 部门（如 "CT", "3DI", "SPS", "ES"）属于 "product" 维度。
@@ -285,7 +320,11 @@ class AIService:
         
         # 1. Handle Time
         if time_range:
-            conditions.append(f"{time_col} = '{time_range}'")
+            if '-' in time_range:
+                start, end = time_range.split('-', 1)
+                conditions.append(f"{time_col} >= '{start}' AND {time_col} <= '{end}'")
+            else:
+                conditions.append(f"{time_col} = '{time_range}'")
         else:
             conditions.append(f"{time_col} = (SELECT MAX({time_col}) FROM {kpi_def.get('table_name')})")
             

@@ -20,17 +20,21 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
   const [dynamicValues, setDynamicValues] = useState<Record<string, string[]>>({});
   const [loadingType, setLoadingType] = useState<string | null>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [searchTerms, setSearchTerms] = useState<Record<string, string>>({});
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
 
   const fetchValues = async (dimensionType: string) => {
     if (!currentKpi) return;
     
     setOpenDropdown(prev => prev === dimensionType ? null : dimensionType);
     
-    if (dynamicValues[dimensionType]) return; // Already fetched
+    // Always refetch if there are selected scopes (for cascading) or if not fetched yet
+    // But optimize: if no selected scopes and already fetched, skip
+    if (dynamicValues[dimensionType] && selectedScopes.length === 0) return; 
 
     setLoadingType(dimensionType);
     try {
-      const values = await getDimensionValues(currentKpi, dimensionType);
+      const values = await getDimensionValues(currentKpi, dimensionType, selectedScopes);
       setDynamicValues(prev => ({ ...prev, [dimensionType]: values }));
     } catch (error) {
       console.error("Error fetching dimension values:", error);
@@ -90,6 +94,40 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
 
   // Time Selection Logic
   if (type === 'time') {
+    // Determine Current FY and Half
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-12
+
+    // FY logic: FY25 = Apr 2024 to Mar 2025.
+    // If month >= 4, we are in FY(Year+1). e.g., Apr 2025 -> FY26.
+    // If month < 4, we are in FY(Year). e.g., Jan 2025 -> FY25.
+    const fyYear = currentMonth >= 4 ? currentYear + 1 : currentYear;
+    const fyShort = fyYear.toString().slice(-2);
+    
+    // FY Range: Apr (FY-1) to Mar (FY)
+    // e.g., FY25: 202404 - 202503
+    const fyStart = `${fyYear - 1}04`;
+    const fyEnd = `${fyYear}03`;
+    const fyLabel = `当前财年FY${fyShort}`;
+
+    // Half Logic
+    // 1H: Apr - Sep (Months 4-9)
+    // 2H: Oct - Mar (Months 10-12, 1-3)
+    let halfLabel = "";
+    let halfRange = "";
+    
+    // If currently in 1H (Apr-Sep)
+    if (currentMonth >= 4 && currentMonth <= 9) {
+       halfLabel = `当前半期FY${fyShort}-1H`;
+       halfRange = `${fyYear - 1}04-${fyYear - 1}09`;
+    } else {
+       // Currently in 2H (Oct-Mar)
+       halfLabel = `当前半期FY${fyShort}-2H`;
+       // Range spans two calendar years: Oct (FY-1) to Mar (FY)
+       halfRange = `${fyYear - 1}10-${fyYear}03`;
+    }
+
     // Find supported time types for current KPI
     let supportedTimeTypes: string[] | undefined = undefined;
     if (currentKpi) {
@@ -106,52 +144,23 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
       : config.time_options.types;
 
     return (
-      <div className="flex flex-col gap-2 mt-2">
-        <div className="flex gap-2 flex-wrap">
-          {filteredTypes.map((item) => (
-            <div key={item.value} className="relative">
-              <button
-                className={`px-3 py-1 rounded-full text-sm transition-colors flex items-center gap-1 border ${
-                  openDropdown === 'time' 
-                    ? 'bg-blue-600 text-white border-blue-600' 
-                    : 'bg-blue-100 text-blue-700 border-transparent hover:bg-blue-200'
-                }`}
-                onClick={() => fetchValues('time')}
-              >
-                {item.label}
-                <ChevronDown size={14} className={clsx("transition-transform", openDropdown === 'time' && "rotate-180")} />
-              </button>
-              
-              {openDropdown === 'time' && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-white shadow-xl rounded-md border border-gray-200 z-50 p-2 max-h-60 overflow-y-auto">
-                   {loadingType === 'time' ? (
-                     <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-blue-600" size={20} /></div>
-                   ) : (
-                     dynamicValues['time']?.length > 0 ? (
-                       <div className="flex flex-col gap-1">
-                         {dynamicValues['time'].map(val => (
-                           <button 
-                              key={val}
-                              className="block w-full text-left px-3 py-2 hover:bg-blue-50 text-sm rounded transition-colors text-gray-700"
-                              onClick={() => {
-                                onSelect(val);
-                                setOpenDropdown(null);
-                              }}
-                           >
-                             {val}
-                           </button>
-                         ))}
-                       </div>
-                     ) : (
-                       <p className="text-xs text-gray-400 p-3 text-center italic">暂无可用数据</p>
-                     )
-                   )}
-                </div>
-              )}
-            </div>
-          ))}
+      <div className="flex flex-col gap-3 mt-2">
+        {/* Quick Actions for Time */}
+        <div className="flex gap-2">
+            <button
+              className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+              onClick={() => onSelect(`${fyStart}-${fyEnd}`)}
+            >
+              {fyLabel}
+            </button>
+            <button
+              className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200"
+              onClick={() => onSelect(halfRange)}
+            >
+              {halfLabel}
+            </button>
         </div>
-        <p className="text-xs text-gray-400 italic">点击确认时间范围或者数据版本</p>
+        <p className="text-xs text-gray-400 italic">点击选择快捷时间段，或在对话框直接输入时间范围（如 202601-202606）</p>
       </div>
     );
   }
@@ -167,11 +176,25 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
       );
     };
 
+    // Determine visible categories based on KPI type
+    // Assuming KPI config logic: 
+    // - Employee/Headcount KPIs -> Product, Organization, Individual
+    // - Machine KPIs -> Product, Organization, Tools
+    const isMachineKPI = currentKpi?.includes('machine') || currentKpi?.includes('chamber');
+    
+    const visibleCategories = config.scope_options.categories.filter(cat => {
+      if (cat.value === 'individual') return !isMachineKPI;
+      if (cat.value === 'tools') return isMachineKPI;
+      return true; // Product & Organization always visible
+    });
+
     return (
       <div className="mt-2 flex flex-col gap-3">
-        <div className="flex gap-2 flex-wrap">
-          {config.scope_options.categories.map((item) => {
+        <div className="flex gap-2 flex-wrap" ref={dropdownRef}>
+          {visibleCategories.map((item) => {
             const hasSelectionInCategory = selectedScopes.some(s => s.startsWith(`${item.value}:`));
+            const isSearchable = item.value === 'individual' || item.value === 'tools';
+            const [searchTerm, setSearchTerm] = useState("");
             
             return (
               <div key={item.value} className="relative">
@@ -191,13 +214,29 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
                 </button>
 
                 {openDropdown === item.value && (
-                  <div className="absolute top-full left-0 mt-1 w-48 bg-white shadow-xl rounded-md border border-gray-200 z-50 p-2 max-h-60 overflow-y-auto">
+                  <div className="absolute top-full left-0 mt-1 w-56 bg-white shadow-xl rounded-md border border-gray-200 z-50 p-2 max-h-80 overflow-y-auto">
+                    {/* Fuzzy Search Input */}
+                    {isSearchable && (
+                        <div className="mb-2 px-1">
+                            <input
+                                type="text"
+                                placeholder={`搜索${item.label}...`}
+                                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerms(prev => ({ ...prev, [item.value]: e.target.value }))}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
+                    )}
+                    
                     {loadingType === item.value ? (
                       <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-blue-600" size={20} /></div>
                     ) : (
                       dynamicValues[item.value]?.length > 0 ? (
                         <div className="flex flex-col gap-1">
-                          {dynamicValues[item.value].map(val => {
+                          {dynamicValues[item.value]
+                            .filter(val => !searchTerm || val.toLowerCase().includes(searchTerm.toLowerCase()))
+                            .map(val => {
                             const isSelected = selectedScopes.includes(`${item.value}:${val}`);
                             return (
                               <button 
@@ -215,6 +254,9 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
                               </button>
                             );
                           })}
+                          {dynamicValues[item.value].filter(val => !searchTerm || val.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
+                              <p className="text-xs text-gray-400 p-2 text-center">无匹配结果</p>
+                          )}
                         </div>
                       ) : (
                         <p className="text-xs text-gray-400 p-3 text-center italic">暂无可用数据</p>

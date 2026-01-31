@@ -40,6 +40,27 @@ class SQLGenerationRequest(BaseModel):
 class DimensionRequest(BaseModel):
     kpi: str
     dimension_type: str # 'time' or 'organization', 'product', etc.
+    current_selection: Optional[List[str]] = [] # For cascading filters e.g. ["product:CT"]
+
+# --- Helper Functions ---
+
+def get_kpi_definition(kpi_name: str, kpi_config: Dict):
+    """Finds KPI definition by key or fuzzy match on description."""
+    kpi_definitions = kpi_config.get('kpi_definitions', {})
+    
+    # 1. Exact match
+    if kpi_name in kpi_definitions:
+        return kpi_name, kpi_definitions[kpi_name]
+    
+    # 2. Fuzzy match
+    print(f"KPI '{kpi_name}' not found exactly. Trying fuzzy match...")
+    for k, v in kpi_definitions.items():
+        desc = v.get('description', '').lower()
+        if kpi_name.lower() in k.lower() or kpi_name.lower() in desc:
+            print(f"Fuzzy matched '{kpi_name}' to '{k}'")
+            return k, v
+            
+    return None, None
 
 # --- Endpoints ---
 
@@ -53,22 +74,11 @@ def get_dimension_values(request: DimensionRequest):
     """Fetches unique values for a specific dimension of a KPI."""
     print(f"Dimension Request: {request}")
     kpi_config = config_service.get_kpi_config()
-    kpi_definitions = kpi_config.get('kpi_definitions', {})
     
-    # 1. Try exact match
-    kpi_def = kpi_definitions.get(request.kpi)
-    
-    # 2. Try case-insensitive or description-based match if exact fails
-    if not kpi_def:
-        print(f"KPI '{request.kpi}' not found exactly. Trying fuzzy match...")
-        for k, v in kpi_definitions.items():
-            if request.kpi.lower() in k.lower() or request.kpi.lower() in v.get('description', '').lower():
-                print(f"Fuzzy matched '{request.kpi}' to '{k}'")
-                kpi_def = v
-                break
+    kpi_key, kpi_def = get_kpi_definition(request.kpi, kpi_config)
     
     if not kpi_def:
-        print(f"KPI '{request.kpi}' not found in definitions: {list(kpi_definitions.keys())}")
+        print(f"KPI '{request.kpi}' not found")
         raise HTTPException(status_code=404, detail="KPI not found")
     
     table_name = kpi_def.get('table_name')
@@ -82,7 +92,25 @@ def get_dimension_values(request: DimensionRequest):
     if not table_name or not column_name:
         return {"values": []}
         
-    values = db_service.get_unique_values(table_name, column_name)
+    # Pass filters to get_unique_values
+    filters = {}
+    if request.current_selection:
+        scope_cols = kpi_def.get('scope_columns', {})
+        for s in request.current_selection:
+            if ":" in s:
+                cat, val = s.split(":", 1)
+                
+                # Prevent self-filtering: Don't filter a dimension by itself
+                # This allows users to see other options in the dropdown even if one is selected
+                if cat == request.dimension_type:
+                    continue
+                    
+                # Map category to actual column name
+                filter_col = scope_cols.get(cat)
+                if filter_col:
+                     filters.setdefault(filter_col, []).append(val)
+
+    values = db_service.get_unique_values(table_name, column_name, filters)
     return {"values": values}
 
 @app.post("/chat/analyze")
@@ -125,14 +153,19 @@ def generate_and_execute_sql(request: SQLGenerationRequest):
 def download_detail(request: SQLGenerationRequest):
     """Generates a detailed SQL (SELECT *) and returns an Excel file."""
     kpi_config = config_service.get_kpi_config()
-    kpi_def = kpi_config.get('kpi_definitions', {}).get(request.kpi, {})
-    sql_template = kpi_def.get('sql_template')
     
+    # Use helper for robust KPI lookup
+    kpi_key, kpi_def = get_kpi_definition(request.kpi, kpi_config)
+    
+    if not kpi_def:
+        raise HTTPException(status_code=404, detail=f"KPI '{request.kpi}' not found")
+        
+    sql_template = kpi_def.get('sql_template')
     if not sql_template:
         raise HTTPException(status_code=400, detail="SQL template not found for KPI")
         
-    # 1. Generate WHERE clause
-    conditions = ai_service.generate_where_clause(request.kpi, request.time_range, request.scope, kpi_config)
+    # 1. Generate WHERE clause (using the matched kpi_key)
+    conditions = ai_service.generate_where_clause(kpi_key, request.time_range, request.scope, kpi_config)
     
     # 2. Transform sql_template from SELECT COUNT... to SELECT *
     # Find the position of 'FROM'
@@ -152,13 +185,24 @@ def download_detail(request: SQLGenerationRequest):
         
     # 4. Generate Excel in memory
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Details')
+    try:
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Details')
+    except Exception as e:
+        print(f"Excel Generation Error: {e}")
+        # Fallback to CSV if Excel fails
+        df.to_csv(output, index=False)
+        filename = f"{kpi_key}_details.csv"
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
     
     xlsx_data = output.getvalue()
     
     # 5. Return Response
-    filename = f"{request.kpi}_details.xlsx"
+    filename = f"{kpi_key}_details.xlsx"
     return Response(
         content=xlsx_data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

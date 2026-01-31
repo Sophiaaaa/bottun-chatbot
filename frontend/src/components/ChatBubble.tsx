@@ -18,14 +18,21 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, children, onViewChart 
   const [isDownloading, setIsDownloading] = useState(false);
 
   const handleDownload = async () => {
-    if (!message.status?.kpi || !message.status?.timeRange) return;
+    // Prefer raw values if available, fallback to display values
+    const kpi = message.status?.rawKpi || message.status?.kpi;
+    const timeRange = message.status?.rawTimeRange || message.status?.timeRange;
+    
+    if (!kpi || !timeRange) return;
     
     setIsDownloading(true);
     try {
-      const scopeArray = message.status.scope ? message.status.scope.split(', ') : [];
+      // Use rawScope if available (already an array), otherwise split the display scope string
+      const scopeArray = message.status?.rawScope || 
+                        (message.status?.scope ? message.status.scope.split(', ') : []);
+                        
       await downloadDetail(
-        message.status.kpi,
-        message.status.timeRange,
+        kpi,
+        timeRange,
         scopeArray
       );
     } catch (error) {
@@ -118,6 +125,14 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, children, onViewChart 
               {message.status.kpi && <p>查询指标: {message.status.kpi}</p>}
               {message.status.timeRange && <p>时间范围: {message.status.timeRange}</p>}
               {message.status.scope && <p>筛选维度: {message.status.scope}</p>}
+              {message.status.sql && (
+                <div className="mt-1">
+                  <p className="mb-0.5">SQL 语句:</p>
+                  <code className="block bg-gray-50 p-1.5 rounded border border-gray-100 font-mono text-[10px] text-gray-500 break-all whitespace-pre-wrap">
+                    {message.status.sql}
+                  </code>
+                </div>
+              )}
             </div>
           )}
         </div>
