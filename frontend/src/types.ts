@@ -14,6 +14,7 @@ export interface Message {
   };
   actions?: {
     missingParams?: string[];
+    allowedCategories?: string[];
     showChart?: boolean;
     showDownload?: boolean;
     data?: any;
@@ -24,7 +25,7 @@ export interface Message {
 export interface UIConfig {
   kpi_levels: {
     level1: Array<{ label: string; value: string }>;
-    level2_mapping: Record<string, Array<{ label: string; value: string; time_types?: string[] }>>;
+    level2_mapping: Record<string, Array<{ label: string; value: string; time_types?: string[]; allowed_scopes?: string[] }>>;
   };
   time_options: {
     types: Array<{ label: string; value: string }>;
@@ -39,6 +40,8 @@ export interface AnalysisResponse {
   time_range: string | null;
   scope: string[] | null;
   missing_params: string[];
+  is_proactive_scope?: boolean;
+  missing_scope_categories?: string[];
 }
 
 export interface SQLResponse {

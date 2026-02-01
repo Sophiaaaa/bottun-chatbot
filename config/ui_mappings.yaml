@@ -18,8 +18,8 @@ kpi_levels:
       - label: "机台数量统计"
         value: "machine_count"
         time_types: ["month"]
-      - label: "Chamber数量统计"
-        value: "chamber_count"
+      - label: "装机时间统计 SU Hour per Tool"
+        value: "su_hour_per_tool"
         time_types: ["month"]
 
 time_options:

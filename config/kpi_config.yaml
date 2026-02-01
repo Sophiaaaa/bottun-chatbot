@@ -109,11 +109,46 @@ tables:
         type: "VARCHAR(6)"
         description: "数据版本/月份 (YYYYMM)。Data Version (YYYYMM)."
 
+  - name: "dws_navi_SE_SUHourperTool_Realtime"
+    description: "设备装机实时工时统计表。Real-time startup hours per tool."
+    columns:
+      - name: "st_FY"
+        type: "VARCHAR(10)"
+        description: "财年。Fiscal Year (e.g., FY26)."
+      - name: "st_HalfFY"
+        type: "VARCHAR(10)"
+        description: "上下财年。Half Fiscal Year (e.g., FY26-2H)."
+      - name: "st_Month"
+        type: "VARCHAR(6)"
+        description: "月份 (YYYYMM)。Month (e.g., 202601)."
+      - name: "st_ProductLine"
+        type: "VARCHAR(50)"
+        description: "产品名称。Product Line (e.g., TS, FSI...)."
+      - name: "st_sn_org_teamname"
+        type: "VARCHAR(100)"
+        description: "团队名称。Team Name."
+      - name: "st_SN"
+        type: "VARCHAR(50)"
+        description: "设备序列号。Serial Number."
+      - name: "d_StartupHour"
+        type: "DECIMAL(10, 2)"
+        description: "Startup工时。Startup Hours."
+      - name: "d_PreWarrantyHour"
+        type: "DECIMAL(10, 2)"
+        description: "PreWarranty工时。Pre-warranty Hours."
+      - name: "st_MachineMachineHistory"
+        type: "VARCHAR(50)"
+        description: "设备的履历。Machine History."
+      - name: "st_SUFlag"
+        type: "VARCHAR(20)"
+        description: "设备装机的状态。SU Flag (e.g., UnderSU, TA)."
+
 kpi_definitions:
   headcount:
     description: "在职人数统计。Total number of active employees (st_EmpAvailable='1')."
     table_name: "dws_tas_roster"
     time_column: "st_WrMonth"
+    allowed_scopes: ["product", "organization", "individual"]
     scope_columns:
       organization: "st_OrgName"
       product: "st_DeptName"
@@ -128,6 +163,7 @@ kpi_definitions:
     description: "FE人数统计, Field Engineer (FE) count. Keywords: FE, Field Engineer, FE人数, FE数量."
     table_name: "dws_tas_roster"
     time_column: "st_WrMonth"
+    allowed_scopes: ["product", "organization", "individual"]
     scope_columns:
       organization: "st_OrgName"
       product: "st_DeptName"
@@ -143,6 +179,7 @@ kpi_definitions:
     description: "OS人数统计, Outsourced Staff (OS) count. Keywords: OS, Outsourced, 外协人数, 外协数量."
     table_name: "dws_tas_roster"
     time_column: "st_WrMonth"
+    allowed_scopes: ["product", "organization", "individual"]
     scope_columns:
       organization: "st_OrgName"
       product: "st_DeptName"
@@ -158,11 +195,11 @@ kpi_definitions:
     description: "机台数量统计, Total number of machines (st_MachineClusterFlag='R')."
     table_name: "dws_wisdom_machine"
     time_column: "st_WrMonth"
+    allowed_scopes: ["product", "organization", "tools"]
     scope_columns:
       organization: "st_BU"
       product: "st_ProductLine"
-      individual: "st_BP"
-      tools: "st_MachineModelName"
+      tools: "st_SN"
     sql_template: |
       SELECT COUNT(DISTINCT st_SN) 
       FROM dws_wisdom_machine 
@@ -170,21 +207,61 @@ kpi_definitions:
       {conditions}
 
   chamber_count:
-    description: "Chamber (小室) 数量统计。Total number of chambers (st_MachineClusterFlag='C')."
+    description: "Chamber数量统计。Total number of chambers (st_MachineClusterFlag='C')."
     table_name: "dws_wisdom_machine"
     time_column: "st_WrMonth"
+    allowed_scopes: ["product", "organization", "tools"]
     scope_columns:
       organization: "st_BU"
       product: "st_ProductLine"
-      individual: "st_BP"
-      tools: "st_MachineModelName"
+      tools: "st_SN"
     sql_template: |
       SELECT COUNT(DISTINCT st_SN) 
       FROM dws_wisdom_machine 
       WHERE st_MachineClusterFlag = 'C'
       {conditions}
 
+  startup_hours:
+    description: "设备装机工时统计。Startup and Pre-warranty hours summary."
+    table_name: "dws_navi_SE_SUHourperTool_Realtime"
+    time_column: "st_Month"
+    allowed_scopes: ["product", "organization", "tools"]
+    scope_columns:
+      product: "st_ProductLine"
+      organization: "st_sn_org_teamname"
+      tools: "st_SN"
+    sql_template: |
+      SELECT 
+        SUM(d_StartupHour) as total_startup_hours,
+        SUM(d_PreWarrantyHour) as total_prewarranty_hours
+      FROM dws_navi_SE_SUHourperTool_Realtime 
+      WHERE st_MachineMachineHistory = 'New' 
+      AND st_SUFlag = 'TA' 
+      {conditions}
+
+  su_hour_per_tool:
+    description: "每机台装机时间 (SU Hour per Tool)。SU Per Tool: [sum(d_StartupHour)+sum(d_PreWarrantyHour)] / count(distinct([st_SN])). Keywords: SU Hour per Tool, 平均每台装机结果, Startup Hour per Tool."
+    table_name: "dws_navi_SE_SUHourperTool_Realtime"
+    time_column: "st_FY"
+    allowed_scopes: ["product", "organization", "tools"]
+    scope_columns:
+      product: "st_ProductLine"
+      organization: "st_sn_org_teamname"
+      tools: "st_SN"
+    sql_template: |
+      SELECT 
+        (SUM(d_StartupHour) + SUM(d_PreWarrantyHour)) / NULLIF(COUNT(DISTINCT st_SN), 0) as 'SUHourperTool' 
+      FROM dws_navi_SE_SUHourperTool_Realtime 
+      WHERE st_MachineMachineHistory = 'New' 
+        AND st_SUFlag = 'TA' 
+      {conditions}
+
 example_sqls:
+  - question: "FY26的SU Hour per Tool结果是多少？"
+    sql: "SELECT SUM(d_StartupHour) + SUM(d_PreWarrantyHour) as 'Hour', COUNT(DISTINCT st_SN) as 'Sets', (SUM(d_StartupHour) + SUM(d_PreWarrantyHour)) / NULLIF(COUNT(DISTINCT st_SN), 0) as 'SUHourperTool' FROM dws_navi_SE_SUHourperTool_Realtime WHERE st_MachineMachineHistory = 'New' AND st_SUFlag = 'TA' AND st_FY = 'FY26'"
+  
+  - question: "FY26 CTSPS的平均每台的装机结果是多少？"
+    sql: "SELECT (SUM(d_StartupHour) + SUM(d_PreWarrantyHour)) / NULLIF(COUNT(DISTINCT st_SN), 0) as 'SUHourperTool' FROM dws_navi_SE_SUHourperTool_Realtime WHERE st_MachineMachineHistory = 'New' AND st_SUFlag = 'TA' AND st_FY = 'FY26' AND (st_ProductLine = 'CT' OR st_ProductLine = 'SPS')"
   - question: "How many active employees are there?"
     sql: "SELECT COUNT(DISTINCT st_EmpID) FROM dws_tas_roster WHERE st_EmpAvailable = '1' AND st_WrMonth = (SELECT MAX(st_WrMonth) FROM dws_tas_roster)"
   

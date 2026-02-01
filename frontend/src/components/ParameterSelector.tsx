@@ -9,9 +9,10 @@ interface ParameterSelectorProps {
   config: UIConfig;
   onSelect: (value: string | string[]) => void;
   currentKpi?: string | null;
+  allowedCategories?: string[];
 }
 
-const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onSelect, currentKpi }) => {
+const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onSelect, currentKpi, allowedCategories }) => {
   const [level1Kpi, setLevel1Kpi] = useState<string | null>(null);
   const [showLevel2, setShowLevel2] = useState(false);
   const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
@@ -22,6 +23,20 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [searchTerms, setSearchTerms] = useState<Record<string, string>>({});
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpenDropdown(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const fetchValues = async (dimensionType: string) => {
     if (!currentKpi) return;
@@ -165,7 +180,6 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
     );
   }
 
-  // Scope Selection Logic
   if (type === 'scope') {
     const toggleScope = (category: string, value: string) => {
       const scopeStr = `${category}:${value}`;
@@ -176,16 +190,33 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
       );
     };
 
-    // Determine visible categories based on KPI type
-    // Assuming KPI config logic: 
-    // - Employee/Headcount KPIs -> Product, Organization, Individual
-    // - Machine KPIs -> Product, Organization, Tools
-    const isMachineKPI = currentKpi?.includes('machine') || currentKpi?.includes('chamber');
-    
+    // Determine allowedScopes based on current KPI
+    let allowedScopes: string[] | undefined = undefined;
+    if (currentKpi) {
+      Object.values(config.kpi_levels.level2_mapping).forEach(items => {
+        const found = items.find(item => item.value === currentKpi);
+        if (found && found.allowed_scopes) {
+          allowedScopes = found.allowed_scopes;
+        }
+      });
+    }
+
     const visibleCategories = config.scope_options.categories.filter(cat => {
+      // 1. If explicitly restricted by allowedCategories (from proactive prompt)
+      if (allowedCategories) {
+        return allowedCategories.includes(cat.value);
+      }
+
+      // 2. If restricted by KPI definition
+      if (allowedScopes) {
+        return allowedScopes.includes(cat.value);
+      }
+      
+      // Fallback logic if no allowedScopes is defined (backward compatibility)
+      const isMachineKPI = currentKpi?.includes('machine') || currentKpi?.includes('chamber');
       if (cat.value === 'individual') return !isMachineKPI;
       if (cat.value === 'tools') return isMachineKPI;
-      return true; // Product & Organization always visible
+      return true;
     });
 
     return (
@@ -193,8 +224,8 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
         <div className="flex gap-2 flex-wrap" ref={dropdownRef}>
           {visibleCategories.map((item) => {
             const hasSelectionInCategory = selectedScopes.some(s => s.startsWith(`${item.value}:`));
-            const isSearchable = item.value === 'individual' || item.value === 'tools';
-            const [searchTerm, setSearchTerm] = useState("");
+            const isSearchable = item.value === 'individual' || item.value === 'tools' || item.value === 'sn';
+            const currentSearchTerm = searchTerms[item.value] || "";
             
             return (
               <div key={item.value} className="relative">
@@ -222,9 +253,10 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
                                 type="text"
                                 placeholder={`搜索${item.label}...`}
                                 className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-500"
-                                value={searchTerm}
+                                value={currentSearchTerm}
                                 onChange={(e) => setSearchTerms(prev => ({ ...prev, [item.value]: e.target.value }))}
                                 onClick={(e) => e.stopPropagation()}
+                                autoFocus
                             />
                         </div>
                     )}
@@ -235,7 +267,7 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
                       dynamicValues[item.value]?.length > 0 ? (
                         <div className="flex flex-col gap-1">
                           {dynamicValues[item.value]
-                            .filter(val => !searchTerm || val.toLowerCase().includes(searchTerm.toLowerCase()))
+                            .filter(val => !currentSearchTerm || val.toLowerCase().includes(currentSearchTerm.toLowerCase()))
                             .map(val => {
                             const isSelected = selectedScopes.includes(`${item.value}:${val}`);
                             return (
@@ -254,7 +286,7 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
                               </button>
                             );
                           })}
-                          {dynamicValues[item.value].filter(val => !searchTerm || val.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
+                          {dynamicValues[item.value].filter(val => !currentSearchTerm || val.toLowerCase().includes(currentSearchTerm.toLowerCase())).length === 0 && (
                               <p className="text-xs text-gray-400 p-2 text-center">无匹配结果</p>
                           )}
                         </div>

@@ -17,8 +17,8 @@ export const getUIConfig = async (): Promise<UIConfig> => {
   return response.data;
 };
 
-export const analyzeQuery = async (query: string): Promise<AnalysisResponse> => {
-  const response = await api.post('/chat/analyze', { query });
+export const analyzeQuery = async (query: string, context?: any): Promise<AnalysisResponse> => {
+  const response = await api.post('/chat/analyze', { query, context });
   return response.data;
 };
 

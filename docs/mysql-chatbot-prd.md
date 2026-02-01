@@ -1,66 +1,70 @@
-# MySQL Chatbot - Product Requirements Document (PRD)
+# MySQL 聊天机器人 - 产品需求文档 (PRD)
 
-## 1. Product Overview
-**Product Name:** MySQL Chatbot
-**Description:** An intelligent chatbot interface for querying MySQL databases using natural language. It utilizes a local Ollama (Qwen3) model for intent understanding and SQL generation. The system is highly configurable via external configuration files.
+## 1. 产品概述
+**产品名称：** MySQL 聊天机器人 (MySQL Chatbot)
+**描述：** 一个使用自然语言查询 MySQL 数据库的智能聊天机器人界面。它利用本地 Ollama (Qwen3) 模型进行意图理解和 SQL 生成。系统可通过外部配置文件进行高度配置。
 
-## 2. User Roles
-- **General User:** Can ask questions, interact with parameter selection buttons, view results, and download data.
-- **Administrator:** Configures database connections, table structures, KPIs, and prompt templates via configuration files.
+## 2. 用户角色
+- **普通用户：** 可以提问、与参数选择按钮交互、查看结果并下载数据。
+- **管理员：** 通过配置文件配置数据库连接、表结构、KPI 指标和提示词模板。
 
-## 3. Core Features
+## 3. 核心功能
 
-### 3.1. Configuration Management
-The system must read the following from configuration files:
-- **Database Connection:** MySQL host, port, user, password, database name.
-- **Table Structure:** Schema definitions relevant to the bot.
-- **KPI Definitions:** Mapping of KPIs to database fields/logic.
-- **Example SQLs:** Few-shot examples for the LLM.
-- **Field Mappings:** Configuration for UI buttons (KPI categories, Time periods, Object scopes).
+### 3.1. 配置管理
+系统必须从配置文件中读取以下内容：
+- **数据库连接：** MySQL 主机、端口、用户名、密码、数据库名称。
+- **表结构：** 与机器人相关的 Schema 定义。
+- **KPI 定义：** KPI 到数据库字段/逻辑的映射。
+- **示例 SQL：** 用于 LLM 的少样本示例 (Few-shot examples)。
+- **字段映射：** UI 按钮的配置（KPI 类别、时间段、对象范围）。
 
-### 3.2. Chat Interface (OpenAI Style)
-- **Home Page:**
-    - Main chat window.
-    - "Common Questions" quick-access buttons.
-- **Chat Bubbles:**
-    - User questions (Right aligned).
-    - Bot responses (Left aligned).
-    - Status/Context Display: Small grey italic text below bubbles showing:
-        - *Confirmed KPI*
-        - *Confirmed Time Range*
-        - *Confirmed Object Scope*
-        - *Generated SQL*
+### 3.2. 聊天界面 (OpenAI 风格)
+- **主页：**
+    - 主聊天窗口。
+    - “常见问题”快速访问按钮。
+- **聊天气泡：**
+    - 用户问题（右对齐）。
+    - 机器人回复（左对齐）。
+    - 状态/上下文显示：气泡下方的小号灰色斜体文字，显示：
+        - *已确认 KPI*
+        - *已确认时间范围*
+        - *已确认对象范围*
+        - *生成的 SQL*
 
-### 3.3. Interactive Query Logic
-The bot analyzes user input to ensure all necessary parameters are present before generating SQL.
+### 3.3. 交互式查询逻辑
+机器人分析用户输入，以确保在生成 SQL 之前所有必要的参数都已存在。
 
-#### 3.3.1. Parameter Validation & Fallback UI
-If the LLM detects missing information, it triggers specific UI elements below the chat bubble:
+#### 3.3.1. 参数验证与兜底 UI
+如果 LLM 检测到缺失信息，它会在聊天气泡下方触发特定的 UI 元素：
 
-1.  **KPI Missing:**
-    - Show **Level 1 KPI** buttons.
-    - On click, show **Level 2 KPI** dropdown menu.
-2.  **Time/Date Missing:**
-    - Show **FY / Half-Year / Month** buttons.
-    - On click, show corresponding dropdown for single selection.
-3.  **Object Scope Missing:**
-    - Show **Product / Organization / Individual / Tools** buttons.
-    - On click, show dropdown for **Multi-selection**.
+1.  **KPI 缺失：**
+    - 显示 **一级 KPI** 按钮（例如：人员、机台）。
+    - 点击后，显示 **二级 KPI** 下拉菜单。
+    - *增强功能：* 支持通过关键词优先级（例如：“机台数量分析” -> `machine_count`）和模糊匹配进行意图识别。
+2.  **时间/日期缺失：**
+    - 显示 **FY (财年)** 和 **Half-Year (半年度)** 快捷键（基于当前日期动态计算）。
+    - 支持手动输入时间范围（例如：“202601-202606”）。
+    - *注：* 具体的“月度 (Month)”下拉按钮已被移除，改为支持范围输入。
+3.  **对象范围缺失：**
+    - 根据所选 KPI 动态显示 **产品 (Product) / 组织 (Organization) / 个人 (Individual) / 工具 (Tools)** 按钮（例如：Machine KPI 仅显示“工具”，Employee KPI 仅显示“个人”）。
+    - **级联筛选 (Cascading Filters)：** 在一个类别（如产品）中的选择会过滤其他类别（如组织）中的可用选项。
+    - **模糊搜索：** 下拉菜单支持模糊搜索，以便更轻松地进行选择。
+    - **点击外部关闭：** 点击外部区域时自动关闭下拉菜单。
 
-*Note: The content of these buttons and dropdowns is driven by the configuration file.*
+*注：这些按钮和下拉菜单的内容由配置文件驱动。*
 
-#### 3.3.2. Query Execution & Results
-- Once parameters are confirmed, the bot generates SQL.
-- Executes SQL against the configured MySQL database.
-- Displays text results in the chat.
+#### 3.3.2. 查询执行与结果
+- 一旦参数确认，机器人生成 SQL。
+- 在配置的 MySQL 数据库上执行 SQL。
+- 在聊天中显示文本结果。
 
-#### 3.3.3. Follow-up Actions
-- After showing results, the bot asks: "Do you need detailed data or charts?"
-- Displays two buttons:
-    1.  **Detail File**: Downloads the result set as a file (CSV/Excel).
-    2.  **Charts**: Renders a visual chart of the data in the chat window.
+#### 3.3.3. 后续操作
+- 显示结果后，机器人询问：“您需要详细数据或图表吗？”
+- 显示两个按钮：
+    1.  **明细文件 (Detail File)：** 将结果集作为文件（CSV/Excel）下载。
+    2.  **图表 (Charts)：** 在聊天窗口中渲染数据的可视化图表。
 
-## 4. Non-Functional Requirements
-- **Model:** Local Ollama deployment using `qwen3`.
-- **Performance:** SQL generation and execution should be reasonably fast.
-- **Security:** Read-only database access recommended for the chatbot connection.
+## 4. 非功能性需求
+- **模型：** 使用 `qwen3` 进行本地 Ollama 部署。
+- **性能：** SQL 生成和执行应具有合理的响应速度。
+- **安全性：** 建议聊天机器人连接使用只读数据库访问权限。

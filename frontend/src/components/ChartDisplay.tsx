@@ -25,7 +25,17 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ data, preferredType = 'bar'
   let dimension: string | null = null;
   let metric: string | null = null;
 
+  // Prioritize month columns for dimension as per user request
+  const monthCols = ['st_Month', 'st_WrMonth', 'month', 'date'];
   for (const col of columns) {
+    if (monthCols.includes(col)) {
+      dimension = col;
+      break;
+    }
+  }
+
+  for (const col of columns) {
+    if (col === dimension) continue;
     const val = firstRow[col];
     // A good dimension is a string that isn't the column name itself (if column name is generic)
     if (!dimension && (typeof val === 'string' || val instanceof String)) {

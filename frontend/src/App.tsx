@@ -53,8 +53,8 @@ const App: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // Analyze Intent
-      const analysis = await analyzeQuery(userMsg.text);
+      // Analyze Intent with current context
+      const analysis = await analyzeQuery(userMsg.text, currentAnalysis);
       setCurrentAnalysis(analysis);
       processAnalysisResult(analysis, userMsg.text);
 
@@ -75,9 +75,26 @@ const App: React.FC = () => {
       let question = "";
       if (firstMissing === 'kpi') question = "您对哪个 KPI 指标感兴趣？";
       else if (firstMissing === 'time_range') question = "请提供需要的时间范围，例如202601-202607";
-      else if (firstMissing === 'scope') question = "查询范围是什么（产品线、部门等）？";
+      else if (firstMissing === 'scope') {
+        if (analysis.is_proactive_scope && analysis.missing_scope_categories) {
+          const catLabels: Record<string, string> = {
+              'product': '产品线',
+              'organization': '团队/组织',
+              'tools': '机台序列号',
+              'individual': '个人'
+          };
+          const missingLabels = analysis.missing_scope_categories.map(c => catLabels[c] || c).join('、');
+          const currentValues = analysis.scope?.map(s => s.split(':')[1]).join(', ');
+          question = `已识别到范围：${currentValues}。还需要补充其他范围吗？（如：${missingLabels}）`;
+        } else {
+          question = "查询范围是什么（产品线、部门等）？";
+        }
+      }
 
-      addBotMessage(question, { missingParams: missing }, analysis);
+      addBotMessage(question, { 
+        missingParams: missing,
+        allowedCategories: analysis.is_proactive_scope ? analysis.missing_scope_categories : undefined
+      }, analysis);
     } else {
       // All params present, execute SQL
       await executeSQL(analysis);
@@ -96,21 +113,10 @@ const App: React.FC = () => {
       // Format result text
       let resultText = result.summary || "查询结果如下：\n";
       
-      // If no summary was provided, or if we want to show a preview of data anyway
-      if (!result.summary && result.result.data && result.result.data.length > 0) {
-        const firstRow = result.result.data[0];
-        resultText += JSON.stringify(firstRow, null, 2); 
-        if (result.result.data.length > 1) {
-           resultText += `\n...以及另外 ${result.result.data.length - 1} 条记录。`;
-        }
-      } else if (!result.summary) {
-        resultText = "未找到符合条件的数据。";
-      }
-
       addBotMessage(resultText, { 
         showChart: true, 
         showDownload: true, 
-        data: result.result 
+        data: result.result
       }, analysis, result.sql);
 
     } catch (error) {
@@ -218,6 +224,12 @@ const App: React.FC = () => {
             onClick={() => {
               setIsHomeActive(true);
               setMessages([]);
+              setCurrentAnalysis({
+                kpi: null,
+                time_range: null,
+                scope: null,
+                missing_params: []
+              });
             }}
             className="flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
@@ -253,6 +265,7 @@ const App: React.FC = () => {
                       }
                       config={uiConfig}
                       currentKpi={currentAnalysis.kpi}
+                      allowedCategories={msg.actions.allowedCategories}
                       onSelect={(val) => handleParameterSelect(
                         msg.actions!.missingParams![0] === 'time_range' ? 'time' : msg.actions!.missingParams![0], 
                         val

@@ -28,9 +28,14 @@ model_name = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
 ai_service = AIService(model=model_name)
 
 # --- Pydantic Models ---
+class AnalysisContext(BaseModel):
+    kpi: Optional[str] = None
+    time_range: Optional[str] = None
+    scope: Optional[List[str]] = None
+
 class ChatRequest(BaseModel):
     query: str
-    context: Optional[Dict[str, Any]] = {}
+    context: Optional[AnalysisContext] = None
 
 class SQLGenerationRequest(BaseModel):
     kpi: str
@@ -119,7 +124,10 @@ def analyze_query(request: ChatRequest):
     kpi_config = config_service.get_kpi_config()
     ui_mappings = config_service.get_ui_mappings()
     
-    analysis = ai_service.analyze_intent(request.query, kpi_config, ui_mappings)
+    # Convert context to dict if exists
+    context_dict = request.context.dict() if request.context else {}
+    
+    analysis = ai_service.analyze_intent(request.query, kpi_config, ui_mappings, context_dict)
     return analysis
 
 @app.post("/chat/sql")

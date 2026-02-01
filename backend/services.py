@@ -4,6 +4,7 @@ import requests
 import pandas as pd
 import json
 import os
+import re
 from typing import Dict, Any, List
 
 # --- Config Service ---
@@ -27,7 +28,22 @@ class ConfigService:
         return self.db_config
 
     def get_ui_mappings(self):
-        return self.ui_mappings
+        # Enhance UI mappings with KPI-specific allowed scopes from kpi_config
+        import copy
+        mappings = copy.deepcopy(self.ui_mappings)
+        kpi_defs = self.kpi_config.get('kpi_definitions', {})
+        
+        # level2_mapping is nested inside kpi_levels
+        kpi_levels = mappings.get('kpi_levels', {})
+        level2_mapping = kpi_levels.get('level2_mapping', {})
+        
+        for category, kpis in level2_mapping.items():
+            for kpi in kpis:
+                kpi_val = kpi.get('value')
+                if kpi_val in kpi_defs:
+                    kpi['allowed_scopes'] = kpi_defs[kpi_val].get('allowed_scopes', [])
+        
+        return mappings
 
     def get_kpi_config(self):
         return self.kpi_config
@@ -159,16 +175,23 @@ class AIService:
                 print("Connection Error: Is Ollama running at localhost:11434?")
             return ""
 
-    def analyze_intent(self, query: str, kpi_config: Dict, ui_mappings: Dict) -> Dict[str, Any]:
+    def analyze_intent(self, query: str, kpi_config: Dict, ui_mappings: Dict, context: Dict = None) -> Dict[str, Any]:
+        # 0. Initialize from context if provided
+        context = context or {}
+        context_kpi = context.get('kpi')
+        context_time = context.get('time_range')
+        context_scope = context.get('scope') or []
+
         # 1. Pre-check for direct KPI matches (Exact or Keyword based)
         kpi_definitions = kpi_config.get('kpi_definitions', {})
-        matched_kpi = None
         
         # Priority mapping for common queries (ordered by specificity)
         priority_keywords = [
             # Full label matches (highest priority)
             ("fe人数统计", "fe_count"),
             ("os人数统计", "os_count"),
+            ("工程师人数统计", "fe_count"),
+            ("外包人数统计", "os_count"),
             ("机台数量统计", "machine_count"),
             ("chamber数量统计", "chamber_count"),
 
@@ -177,6 +200,17 @@ class AIService:
             ("os人数分析", "os_count"),
             ("机台数量分析", "machine_count"),
             ("chamber数量分析", "chamber_count"),
+            
+            # SU Hour per Tool
+            ("su hour per tool", "su_hour_per_tool"),
+            ("startup hour per tool", "su_hour_per_tool"),
+            ("su hour", "su_hour_per_tool"),
+            ("su工时", "su_hour_per_tool"),
+            ("装机工时", "su_hour_per_tool"),
+            ("平均每台的装机结果", "su_hour_per_tool"),
+            ("平均每台装机结果", "su_hour_per_tool"),
+            ("机台装机时间", "su_hour_per_tool"),
+            ("每机台装机时间", "su_hour_per_tool"),
             
             # Keywords
             ("fe人数", "fe_count"),
@@ -195,89 +229,112 @@ class AIService:
             ("人员", "headcount")
         ]
 
-        # Check for priority keywords first
+        # Check if the query contains a NEW KPI
         query_lower = query.lower()
+        new_kpi = None
         for kw, kpi_key in priority_keywords:
             if kw in query_lower:
-                matched_kpi = kpi_key
-                print(f"Priority keyword match: {kw} -> {kpi_key}")
+                new_kpi = kpi_key
                 break
+        
+        # Reset Logic: If a new KPI is detected, we treat it as a fresh question
+        # UNLESS the new KPI is the same as the context KPI, then it might be a refinement.
+        if new_kpi and new_kpi != context_kpi:
+            print(f"New KPI detected: {new_kpi}. Resetting context.")
+            matched_kpi = new_kpi
+            found_scopes = []
+            extracted_time = None # Time might need re-extraction
+        else:
+            # Continue with context
+            matched_kpi = context_kpi or new_kpi
+            found_scopes = context_scope
+            extracted_time = context_time
 
-        # Manual scope extraction for common products to be safe
-        found_scopes = []
-        known_products = ["CT", "3DI", "SPS", "ES", "SPS", "SSP", "TPS"]
+        # 2. Extract Time and Scope manually
+        import re
+        known_products = ["CT", "3DI", "SPS", "ES", "SSP", "TPS", "TS", "FSI", "Certas", "SD", "Epion", "FPD"]
+        
+        # 2a. Extract Time first to avoid misidentifying it as SN
+        new_time = None
+        range_match = re.search(r'(20\d{4})-(20\d{4})', query)
+        if range_match:
+            new_time = f"{range_match.group(1)}-{range_match.group(2)}"
+        else:
+            time_match = re.search(r'(20\d{4})', query)
+            if not time_match:
+                time_match = re.search(r'(FY\d{2})', query, re.IGNORECASE)
+            if time_match:
+                new_time = time_match.group(1).upper()
+        
+        if new_time:
+            extracted_time = new_time
+
+        # 2b. Extract Scopes
+        new_scopes = []
         for prod in known_products:
             if prod.lower() in query_lower:
-                found_scopes.append(f"product:{prod}")
-                print(f"Manual scope match: {prod}")
+                new_scopes.append(f"product:{prod}")
 
-        # If still no match, check descriptions
-        if not matched_kpi:
-            for k, v in kpi_definitions.items():
-                desc = v.get('description', '').lower()
-                if query_lower == k.lower() or query_lower in desc:
-                    matched_kpi = k
-                    print(f"Description match found for KPI: {k}")
-                    break
-        
-        # If we have a strong match, only short-circuit if the query is VERY simple 
-        # (e.g. just the keyword itself) to avoid missing other params like "CT" in "CT有多少FE"
-        is_exact_match = any(query_lower == kw for kw, _ in priority_keywords)
-        
-        # If we found both KPI and some scopes manually, we can also short-circuit
-        if matched_kpi and (is_exact_match or len(query) < 5 or found_scopes):
-            # Extract time if possible (simple YYYYMM pattern or YYYYMM-YYYYMM range)
-            import re
-            
-            # Check for range first: YYYYMM-YYYYMM
-            range_match = re.search(r'\b(20\d{4})-(20\d{4})\b', query)
-            if range_match:
-                extracted_time = f"{range_match.group(1)}-{range_match.group(2)}"
-            else:
-                # Check for single YYYYMM
-                time_match = re.search(r'\b(20\d{4})\b', query)
-                extracted_time = time_match.group(1) if time_match else None
-            
-            missing = []
-            if not extracted_time: missing.append("time_range")
-            if not found_scopes: missing.append("scope")
-            
-            return {
-                "kpi": matched_kpi, 
-                "time_range": extracted_time, 
-                "scope": found_scopes, 
-                "missing_params": missing
-            }
-        
-        # Construct a prompt to analyze the user's query
+        # Manual SN extraction (6 digits)
+        # Avoid numbers starting with '20' if they look like the extracted time
+        sn_matches = re.findall(r'\b(\d{6})\b', query)
+        for sn in sn_matches:
+            # If the 6-digit number is part of the extracted_time, skip it
+            if extracted_time and sn in extracted_time:
+                continue
+            # If it starts with '20' and is likely a YYYYMM, skip it (unless we are sure it's an SN)
+            if sn.startswith('20') and (202001 <= int(sn) <= 203012):
+                continue
+            new_scopes.append(f"tools:{sn}")
+
+        # Update found_scopes
+        if new_kpi and new_kpi != context_kpi:
+            found_scopes = new_scopes
+        else:
+            for s in new_scopes:
+                if s not in found_scopes:
+                    found_scopes.append(s)
+
+        # 4. AI Analysis (Improved for natural language scope)
         kpi_info = {k: v.get('description', '') for k, v in kpi_definitions.items()}
+        all_categories = ui_mappings.get('scope_options', {}).get('categories', [])
         
+        if matched_kpi and matched_kpi in kpi_definitions:
+            allowed_scope_keys = list(kpi_definitions[matched_kpi].get('scope_columns', {}).keys())
+            available_scopes = [s['value'] for s in all_categories if s['value'] in allowed_scope_keys]
+        else:
+            available_scopes = [s['value'] for s in all_categories]
+
         prompt = f"""
         [Role]
         你是一个专业的数据分析助手，负责从用户查询中提取关键参数。
         
+        [Context]
+        1. 当前已识别参数 (Current Context):
+           - KPI: {matched_kpi}
+           - Time Range: {extracted_time}
+           - Scope: {json.dumps(found_scopes, ensure_ascii=False)}
+        2. 可选指标 (Available KPIs): {json.dumps(kpi_info, ensure_ascii=False)}
+        3. 可选维度分类 (Available Scopes categories): {available_scopes}
+        
         [User Query]
         "{query}"
         
-        [Context]
-        1. Available KPIs (key: description): {json.dumps(kpi_info, ensure_ascii=False)}
-        2. Available Time types: {[t['value'] for t in ui_mappings.get('time_options', {}).get('types', [])]}
-        3. Available Scopes categories: {[s['value'] for s in ui_mappings.get('scope_options', {}).get('categories', [])]}
-        
         [Instruction]
-        从查询中识别 KPI、时间范围 (time_range) 和维度范围 (scope)。
+        基于当前上下文和用户新的查询，更新并提取 KPI、时间范围 (time_range) 和维度范围 (scope)。同时判断用户是否已经表达了“完成选择”或“不需要更多”的意图。
         
         [Rules]
-        1. KPI 识别优先级：
-           - 如果用户提到 "FE", "Field Engineer", "FE人数", "FE数量", "FE人数分析", 匹配 "fe_count"。
-           - 如果用户提到 "OS", "Outsourced", "外协", "OS人数分析", 匹配 "os_count"。
-           - 如果用户提到 "机台", "机器", "Machine", "机台数量分析", 匹配 "machine_count"。
-           - 如果用户提到 "Chamber", "小室", "Chamber数量分析", 匹配 "chamber_count"。
-           - 默认的人数统计匹配 "headcount"。
-        2. Scope 识别：
-           - 部门（如 "CT", "3DI", "SPS", "ES"）属于 "product" 维度。
-           - 范围格式必须为 "category:value" (例如 "product:CT", "organization:SPS")。
-        3. 如果已经识别出 KPI 为 "{matched_kpi if matched_kpi else 'None'}"，请优先确认。
+        1. KPI 识别：如果上下文已有 KPI 且查询未明确更改，请保持现状。
+        2. Scope 识别:
+           - 识别具体的部门、团队、机台序列号。
+           - 部门（如 "CT", "3DI", "SPS", "ES"）映射为 "product"。
+           - 团队名称映射为 "organization"。
+           - 机台 SN（如 100367）映射为 "tools"。
+           - 格式必须为 "category:value"。
+        3. 否定意图识别 (Negative Intent Recognition):
+           - **重点**: 如果用户回答“没有”、“不用了”、“不需要”、“就这样”、“没了”、“所有”、“全部”、“跳过”等词汇，说明其不想再补充维度了。
+           - 在这种情况下，JSON 必须返回 `"finished_selection": true`。
+        4. 合并: 将新提取的内容与上下文合并。
         
         [Output Format]
         Return JSON ONLY:
@@ -285,30 +342,57 @@ class AIService:
             "kpi": "kpi_key",
             "time_range": "time_value_or_null",
             "scope": ["category:value", ...],
-            "missing_params": ["kpi", "time_range", "scope"]
+            "finished_selection": true/false
         }}
-        如果没有找到对应参数，将其设为 null 并加入 missing_params 列表。
         """
-        print(f"Analyzing intent for: {query}")
+        print(f"Analyzing intent with context for: {query}")
         response_text = self.generate_response(prompt)
-        print(f"AI Response: {response_text}")
         
-        # Attempt to parse JSON from response (simple cleanup)
+        result = {"kpi": matched_kpi, "time_range": extracted_time, "scope": found_scopes, "missing_params": [], "finished_selection": False}
         try:
-            # Find first { and last }
             start = response_text.find("{")
             end = response_text.rfind("}") + 1
             if start != -1 and end != -1:
-                json_str = response_text[start:end]
-                result = json.loads(json_str)
-                print(f"Parsed Analysis: {result}")
-                return result
-        except Exception as e:
-            print(f"JSON Parse Error: {e}")
-            pass
-        
-        # Fallback if parsing fails
-        return {"kpi": None, "time_range": None, "scope": None, "missing_params": ["kpi", "time_range", "scope"]}
+                ai_result = json.loads(response_text[start:end])
+                if ai_result.get('kpi'): result['kpi'] = ai_result['kpi']
+                if ai_result.get('time_range'): result['time_range'] = ai_result['time_range']
+                if ai_result.get('scope'): 
+                    result['scope'] = list(set(result.get('scope', []) + ai_result['scope']))
+                if ai_result.get('finished_selection'):
+                    result['finished_selection'] = True
+        except: pass
+
+        # --- Proactive Missing Params Logic ---
+        missing = []
+        if not result['kpi']: missing.append('kpi')
+        if not result['time_range']: missing.append('time_range')
+            
+        # Scope proactive check
+        if result['kpi'] and result['kpi'] in kpi_definitions:
+            kpi_def = kpi_definitions[result['kpi']]
+            allowed = kpi_def.get('allowed_scopes', [])
+            current_categories = set(s.split(':')[0] for s in result.get('scope', []) if ':' in s)
+            missing_categories = [c for c in allowed if c not in current_categories]
+            
+            # Keyword based fallback for negative intent
+            negative_keywords = ["没有", "不用", "不需要", "没了", "就这样", "所有", "全部", "all", "nothing", "skip", "no", "无"]
+            is_all = result['finished_selection'] or any(word in query_lower for word in negative_keywords)
+            
+            # If user said they are finished, don't ask for scope anymore
+            if is_all:
+                result['finished_selection'] = True # Sync back to result
+            
+            if not current_categories and not is_all:
+                missing.append('scope')
+            elif current_categories and missing_categories and not is_all:
+                # We have some scope, but not all. Set a flag instead of adding to 'missing'
+                result['is_proactive_scope'] = True
+                result['missing_scope_categories'] = missing_categories
+                if 'scope' not in missing:
+                    missing.append('scope')
+                    
+        result['missing_params'] = missing
+        return result
 
     def _build_conditions_programmatically(self, kpi: str, time_range: str, scope: List[str], kpi_config: Dict) -> str:
         """Constructs WHERE clause conditions programmatically as a fallback."""
@@ -377,27 +461,26 @@ class AIService:
         print(f"Generating SQL programmatically for {kpi}...")
         conditions = self._build_conditions_programmatically(kpi, time_range, scope, kpi_config)
         
-        # Check if we need GROUP BY
-        has_multiple_values = False
-        group_col = None
-        if scope:
-            scope_map = {}
-            for s in scope:
-                if ":" in s:
-                    cat, val = s.split(":", 1)
-                    scope_map.setdefault(cat, []).append(val)
-            
-            for cat, values in scope_map.items():
-                if len(values) > 1:
-                    has_multiple_values = True
-                    group_col = scope_cols.get(cat)
-                    break
+        # Determine group columns. 
+        # User requested ONLY monthly breakdown for ALL KPIs.
+        time_col = kpi_def.get('time_column')
+        # If time_column is st_FY, we prefer st_Month for the grouping as per user request
+        month_col = time_col
+        if time_col == 'st_FY':
+            month_col = 'st_Month'
         
-        if has_multiple_values and group_col:
-            conditions += f" GROUP BY {group_col}"
+        group_cols = [month_col] if month_col else []
+        
+        if group_cols:
+            group_by_clause = f" GROUP BY {', '.join(group_cols)}"
+            # Remove any existing GROUP BY if it somehow got in there
+            if "GROUP BY" in conditions.upper():
+                conditions = re.split(r'GROUP BY', conditions, flags=re.IGNORECASE)[0].strip()
+            conditions += group_by_clause
 
         # Final assembly
         if conditions:
+            # Handle the case where conditions only contains GROUP BY
             if conditions.upper().strip().startswith("GROUP BY"):
                 final_sql = template.replace("{conditions}", conditions)
             else:
@@ -405,10 +488,13 @@ class AIService:
         else:
             final_sql = template.replace("{conditions}", "")
         
-        # Adjust SELECT for GROUP BY
-        if group_col and "GROUP BY" in conditions.upper():
-            if "SELECT COUNT" in final_sql.upper() and group_col not in final_sql.split("FROM")[0]:
-                final_sql = final_sql.replace("SELECT ", f"SELECT {group_col}, ", 1)
+        # Adjust SELECT to include ONLY the month column
+        if group_cols:
+            select_part = final_sql.split("FROM")[0]
+            # Add month column if not already in SELECT
+            for col in reversed(group_cols):
+                if col not in select_part:
+                    final_sql = final_sql.replace("SELECT ", f"SELECT {col}, ", 1)
         
         print(f"Final SQL (Programmatic): {final_sql}")
         return final_sql
@@ -425,6 +511,7 @@ class AIService:
         # Common database columns to friendly names
         friendly_names = {
             "st_WrMonth": "月份",
+            "st_Month": "月份",
             "st_DeptName": "产品组",
             "st_OrgName": "组织架构",
             "st_EmpNameCN": "姓名",
@@ -434,7 +521,13 @@ class AIService:
             "st_EmpID": "工号",
             "st_ClassName": "岗位类别",
             "st_WorkLocation": "工作地点",
-            "st_LEOName": "用工类型"
+            "st_LEOName": "用工类型",
+            "st_sn_org_teamname": "团队名称",
+            "Hour": "总工时",
+            "Sets": "总台数",
+            "SUHourperTool": "平均每台装机工时",
+            "total_startup_hours": "总Startup工时",
+            "total_prewarranty_hours": "总Pre-warranty工时"
         }
         col_to_label.update(friendly_names)
 
