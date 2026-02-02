@@ -224,7 +224,7 @@ const ParameterSelector: React.FC<ParameterSelectorProps> = ({ type, config, onS
         <div className="flex gap-2 flex-wrap" ref={dropdownRef}>
           {visibleCategories.map((item) => {
             const hasSelectionInCategory = selectedScopes.some(s => s.startsWith(`${item.value}:`));
-            const isSearchable = item.value === 'individual' || item.value === 'tools' || item.value === 'sn';
+            const isSearchable = item.value === 'individual' || item.value === 'tools' || item.value === 'sn' || item.value === 'organization';
             const currentSearchTerm = searchTerms[item.value] || "";
             
             return (

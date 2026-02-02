@@ -23,6 +23,9 @@ app.add_middleware(
 # Initialize Services
 config_service = ConfigService()
 db_service = DatabaseService(config_service.get_db_config())
+# Ensure exception table exists
+db_service.init_exception_table()
+
 # Use a more likely model name or allow env override
 model_name = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
 ai_service = AIService(model=model_name)
@@ -127,7 +130,7 @@ def analyze_query(request: ChatRequest):
     # Convert context to dict if exists
     context_dict = request.context.dict() if request.context else {}
     
-    analysis = ai_service.analyze_intent(request.query, kpi_config, ui_mappings, context_dict)
+    analysis = ai_service.analyze_intent(request.query, kpi_config, ui_mappings, context_dict, db_service)
     return analysis
 
 @app.post("/chat/sql")

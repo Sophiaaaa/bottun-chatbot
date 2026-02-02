@@ -66,6 +66,54 @@ class DatabaseService:
             print(f"DB Connection Error: {e}")
             return None
 
+    def init_exception_table(self):
+        """Creates the exception table if it doesn't exist."""
+        sql_create = """
+        CREATE TABLE IF NOT EXISTS unsupported_kpi_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(50),
+            user_query TEXT,
+            time_range VARCHAR(50),
+            scope TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+        conn = self.get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute(sql_create)
+                
+                # Check if user_id column exists (for migration)
+                cursor.execute("SHOW COLUMNS FROM unsupported_kpi_logs LIKE 'user_id'")
+                result = cursor.fetchone()
+                if not result:
+                    print("Adding missing column 'user_id' to unsupported_kpi_logs...")
+                    cursor.execute("ALTER TABLE unsupported_kpi_logs ADD COLUMN user_id VARCHAR(50) AFTER id")
+                
+                conn.commit()
+                print("Exception table initialized/verified.")
+            except Exception as e:
+                print(f"Error initializing exception table: {e}")
+            finally:
+                conn.close()
+
+    def log_exception(self, query: str, time_range: str, scope: List[str]):
+        """Logs unsupported KPI requests."""
+        sql = "INSERT INTO unsupported_kpi_logs (user_query, time_range, scope) VALUES (%s, %s, %s)"
+        conn = self.get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                scope_str = json.dumps(scope, ensure_ascii=False) if scope else "[]"
+                cursor.execute(sql, (query, time_range, scope_str))
+                conn.commit()
+                print(f"Logged unsupported KPI request: {query}")
+            except Exception as e:
+                print(f"Error logging exception: {e}")
+            finally:
+                conn.close()
+
     def get_unique_values(self, table_name: str, column_name: str, filters: Dict[str, List[str]] = None) -> List[str]:
         conn = self.get_connection()
         if not conn:
@@ -175,7 +223,7 @@ class AIService:
                 print("Connection Error: Is Ollama running at localhost:11434?")
             return ""
 
-    def analyze_intent(self, query: str, kpi_config: Dict, ui_mappings: Dict, context: Dict = None) -> Dict[str, Any]:
+    def analyze_intent(self, query: str, kpi_config: Dict, ui_mappings: Dict, context: Dict = None, db_service: Any = None) -> Dict[str, Any]:
         # 0. Initialize from context if provided
         context = context or {}
         context_kpi = context.get('kpi')
@@ -198,6 +246,8 @@ class AIService:
             # Analysis Intent matches
             ("fe人数分析", "fe_count"),
             ("os人数分析", "os_count"),
+            ("工程师人数分析", "fe_count"),
+            ("外包人数分析", "os_count"),
             ("机台数量分析", "machine_count"),
             ("chamber数量分析", "chamber_count"),
             
@@ -206,6 +256,8 @@ class AIService:
             ("startup hour per tool", "su_hour_per_tool"),
             ("su hour", "su_hour_per_tool"),
             ("su工时", "su_hour_per_tool"),
+            ("平均装机时间", "su_hour_per_tool"),
+            ("装机时间", "su_hour_per_tool"),
             ("装机工时", "su_hour_per_tool"),
             ("平均每台的装机结果", "su_hour_per_tool"),
             ("平均每台装机结果", "su_hour_per_tool"),
@@ -364,32 +416,49 @@ class AIService:
 
         # --- Proactive Missing Params Logic ---
         missing = []
-        if not result['kpi']: missing.append('kpi')
-        if not result['time_range']: missing.append('time_range')
-            
-        # Scope proactive check
+        
+        # 1. Check Time
+        if not result['time_range']: 
+            missing.append('time_range')
+
+        # 2. Check Scope
+        negative_keywords = ["没有", "不用", "不需要", "没", "没了", "就这样", "所有", "全部", "all", "nothing", "skip", "no", "无"]
+        is_finished_selection = result['finished_selection'] or any(word in query_lower for word in negative_keywords)
+        
+        if is_finished_selection:
+            result['finished_selection'] = True
+
         if result['kpi'] and result['kpi'] in kpi_definitions:
             kpi_def = kpi_definitions[result['kpi']]
             allowed = kpi_def.get('allowed_scopes', [])
             current_categories = set(s.split(':')[0] for s in result.get('scope', []) if ':' in s)
             missing_categories = [c for c in allowed if c not in current_categories]
             
-            # Keyword based fallback for negative intent
-            negative_keywords = ["没有", "不用", "不需要", "没了", "就这样", "所有", "全部", "all", "nothing", "skip", "no", "无"]
-            is_all = result['finished_selection'] or any(word in query_lower for word in negative_keywords)
-            
-            # If user said they are finished, don't ask for scope anymore
-            if is_all:
-                result['finished_selection'] = True # Sync back to result
-            
-            if not current_categories and not is_all:
+            if not current_categories and not is_finished_selection:
                 missing.append('scope')
-            elif current_categories and missing_categories and not is_all:
-                # We have some scope, but not all. Set a flag instead of adding to 'missing'
+            elif current_categories and missing_categories and not is_finished_selection:
                 result['is_proactive_scope'] = True
                 result['missing_scope_categories'] = missing_categories
                 if 'scope' not in missing:
                     missing.append('scope')
+        else:
+            # KPI Unknown: We need context (Time + Scope/Finished) before we fail.
+            has_scope = len(result.get('scope', [])) > 0
+            if not has_scope and not is_finished_selection:
+                 missing.append('scope')
+
+        # 3. Handle KPI and Exception Logic
+        if not result['kpi']:
+            if missing:
+                # If time or scope is missing, we ask for those first.
+                pass 
+            else:
+                # Context is complete, but KPI is unknown -> Log and Error.
+                if db_service:
+                    db_service.log_exception(query, result['time_range'], result['scope'])
+                
+                result['response_message'] = "暂未支持这个KPI的开发，已收集这个问题，并告知项目负责人。"
+                missing = []
                     
         result['missing_params'] = missing
         return result
@@ -503,7 +572,16 @@ class AIService:
 
     def summarize_result(self, kpi: str, time_range: str, scope: List[str], data: Any, kpi_config: Dict) -> str:
         kpi_def = kpi_config.get('kpi_definitions', {}).get(kpi, {})
-        kpi_desc = kpi_def.get('description', kpi).split(',')[0].split('.')[0].strip()
+        # Use description directly but clean it up more aggressively if needed
+        # Or just use the KPI name if description is too long/complex
+        kpi_desc = kpi_def.get('description', kpi)
+        
+        # Split by comma or period to get the main title, avoiding formula details
+        if "Keywords:" in kpi_desc:
+            kpi_desc = kpi_desc.split("Keywords:")[0]
+        
+        kpi_desc = kpi_desc.split('。')[0].strip()
+        
         scope_cols = kpi_def.get('scope_columns', {})
         
         # Reverse mapping for columns to friendly names

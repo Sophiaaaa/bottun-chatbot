@@ -120,7 +120,7 @@ const App: React.FC = () => {
       }, analysis, result.sql);
 
     } catch (error) {
-      addBotMessage("执行 SQL 查询时出错。");
+      addBotMessage("暂未支持这个KPI的开发，已收集这个问题，并告知项目负责人");
     } finally {
       setIsLoading(false);
     }

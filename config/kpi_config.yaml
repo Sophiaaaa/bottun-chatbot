@@ -240,9 +240,9 @@ kpi_definitions:
       {conditions}
 
   su_hour_per_tool:
-    description: "每机台装机时间 (SU Hour per Tool)。SU Per Tool: [sum(d_StartupHour)+sum(d_PreWarrantyHour)] / count(distinct([st_SN])). Keywords: SU Hour per Tool, 平均每台装机结果, Startup Hour per Tool."
+    description: "每机台装机时间 (SU Hour per Tool)。Keywords: SU Hour per Tool, 平均每台装机结果, Startup Hour per Tool."
     table_name: "dws_navi_SE_SUHourperTool_Realtime"
-    time_column: "st_FY"
+    time_column: "st_Month"
     allowed_scopes: ["product", "organization", "tools"]
     scope_columns:
       product: "st_ProductLine"
@@ -250,7 +250,7 @@ kpi_definitions:
       tools: "st_SN"
     sql_template: |
       SELECT 
-        (SUM(d_StartupHour) + SUM(d_PreWarrantyHour)) / NULLIF(COUNT(DISTINCT st_SN), 0) as 'SUHourperTool' 
+        round(SUM(d_StartupHour) + SUM(d_PreWarrantyHour), 2) / NULLIF(COUNT(DISTINCT st_SN), 2) as 'SUHourperTool' 
       FROM dws_navi_SE_SUHourperTool_Realtime 
       WHERE st_MachineMachineHistory = 'New' 
         AND st_SUFlag = 'TA' 

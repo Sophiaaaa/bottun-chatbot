@@ -14,8 +14,8 @@ const HomePage: React.FC<HomePageProps> = ({ onSendMessage }) => {
       subtitle: "查询各个部门的 Field Engineer 数量"
     },
     {
-      title: "机台数量分析",
-      subtitle: "查看当前所有 Main Machine 的总数"
+      title: "SPS机台平均装机时间是多少",
+      subtitle: "查询 SPS 部门机台的平均装机时间"
     },
     {
       title: "CT有多少FE",
